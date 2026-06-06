@@ -1,6 +1,7 @@
 import { Brain, Circle, HeartPulse, ShieldAlert } from "lucide-react";
 import type React from "react";
 import type { Character, InventoryItem, RoomPresence } from "@/lib/types";
+import { parseCharacterMetadata } from "@/lib/character-metadata";
 
 type CharacterRailProps = {
   characters: Character[];
@@ -13,23 +14,34 @@ export function CharacterRail({ characters, inventory = [], presence = [], side 
   return (
     <aside className="player-character-rail hidden xl:block">
       <div className="sticky top-4 flex flex-col gap-3">
-        {characters.map((character) => (
-          <article key={character.id} className="player-character-card overflow-hidden rounded-xl">
-            <header className="flex items-center justify-between gap-3 px-3 py-3">
-              <h3 className="truncate text-lg font-semibold" style={{ color: character.color }}>
-                {character.character_name}
-              </h3>
-              <PresenceDot online={isOnline(presence, character.user_id)} />
-            </header>
-            <div className="mx-3 aspect-[4/5] rounded-lg border border-white/10 bg-cover bg-center" style={{ backgroundImage: `url(${character.portrait_url})` }} />
-            <div className="space-y-3 p-3">
-              <div>
-                <h4 className="font-serif text-xl uppercase tracking-wide" style={{ color: character.color }}>
-                  {character.character_name} {character.character_surname}
-                </h4>
-                <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-300">{character.public_background}</p>
-              </div>
-              <div className="grid gap-2 text-xs text-slate-200">
+        {characters.map((character) => {
+          const meta = parseCharacterMetadata(character.public_background);
+          return (
+            <article key={character.id} className="player-character-card overflow-hidden rounded-xl">
+              <header className="flex items-center justify-between gap-3 px-3 py-3">
+                <h3 className="truncate text-lg font-semibold" style={{ color: character.color }}>
+                  {character.character_name}
+                </h3>
+                <PresenceDot online={isOnline(presence, character.user_id)} />
+              </header>
+              <div className="mx-3 aspect-[4/5] rounded-lg border border-white/10 bg-cover bg-center" style={{ backgroundImage: `url(${character.portrait_url})` }} />
+              <div className="space-y-3 p-3">
+                <div>
+                  <h4 className="font-serif text-xl uppercase tracking-wide leading-tight" style={{ color: character.color }}>
+                    {character.character_name} {character.character_surname}
+                  </h4>
+                  {meta.archetype && (
+                    <span className="mt-1 inline-block rounded bg-white/[0.06] border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-brass">
+                      {meta.archetype}
+                    </span>
+                  )}
+                  {meta.bio ? (
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-5 text-slate-300">{meta.bio}</p>
+                  ) : meta.origin ? (
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-5 text-slate-400 italic">Origine: {meta.origin}</p>
+                  ) : null}
+                </div>
+                <div className="grid gap-2 text-xs text-slate-200">
                 <StatRow icon={<HeartPulse size={14} />} label="PF" value={`${character.hp} / 10`} tone="rose" progress={Math.min(100, Math.max(0, character.hp * 10))} />
                 <StatRow icon={<Brain size={14} />} label="Mente" value={character.mental_state} tone="sky" progress={character.mental_state.toLowerCase().includes("stabile") ? 86 : 55} />
                 <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5">
@@ -51,7 +63,8 @@ export function CharacterRail({ characters, inventory = [], presence = [], side 
               </div>
             </div>
           </article>
-        ))}
+          );
+        })}
         {characters.length === 0 ? (
           <div className="player-rail-empty glass-panel rounded-lg p-4 text-sm text-slate-400">
             <p>Nessun personaggio</p>

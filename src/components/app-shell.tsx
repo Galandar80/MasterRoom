@@ -13,6 +13,7 @@ import { SuperAdminRooms } from "@/components/superadmin-rooms";
 import { demoRoomState } from "@/lib/demo-data";
 import { cardDeckLabel, drawCard, encodeDiceReason, getDiceCount, rollDice as rollDiceValues, stripDiceCountMarker, type CardDeckType } from "@/lib/game-random";
 import { clearSupabaseAuthStorage, createClient, demoMode } from "@/lib/supabase/client";
+import { playUiCinematicDanger, playUiCinematicReveal, playUiCinematicVision, playUiCinematicChapter, playUiCinematicEarthquake } from "@/lib/sound-generator";
 import {
   createGameInSupabase,
   createAudioTrack,
@@ -90,6 +91,18 @@ const MAP_SYNC_PREFIX = "__gdr_map_sync__:";
 
 export function AppShell() {
   const [view, setView] = useState<View>("menu");
+  const [activeCue, setActiveCue] = useState<{ cueId: string; tone: string; message: string } | null>(null);
+  const shakeTimeoutRef = useRef<number | null>(null);
+  const activeShakeClassRef = useRef<string | null>(null);
+  const cueTimeoutRef = useRef<number | null>(null);
+  
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const theme = localStorage.getItem("gdr_visual_theme") || "fantasy";
+      document.documentElement.className = `theme-${theme}`;
+    }
+  }, []);
+
   const [roomState, setRoomState] = useState<RoomState>(demoRoomState);
   const [identityId, setIdentityId] = useState("master");
   const [status, setStatus] = useState("Caricamento dati...");
@@ -128,6 +141,73 @@ export function AppShell() {
     window.setTimeout(() => {
       setCinematicEvent((current) => (current?.title === event.title && current.kind === event.kind ? null : current));
     }, event.kind === "scene" ? 4800 : 4200);
+  }
+
+  function triggerDirectorCueLocally(cueId: string, tone: string, message: string) {
+    if (tone === "danger") {
+      playUiCinematicDanger();
+    } else if (tone === "reveal") {
+      playUiCinematicReveal();
+    } else if (tone === "vision") {
+      playUiCinematicVision();
+    } else if (tone === "chapter") {
+      playUiCinematicChapter();
+    } else if (tone === "earthquake") {
+      playUiCinematicEarthquake();
+    }
+
+    if (shakeTimeoutRef.current !== null) {
+      window.clearTimeout(shakeTimeoutRef.current);
+      if (activeShakeClassRef.current) {
+        document.documentElement.classList.remove(activeShakeClassRef.current);
+      }
+    }
+
+    const shakeClass = tone === "earthquake" ? "cue-shake-heavy-active" : "cue-shake-active";
+    const shakeDuration = tone === "earthquake" ? 1500 : 800;
+
+    activeShakeClassRef.current = shakeClass;
+    document.documentElement.classList.add(shakeClass);
+    shakeTimeoutRef.current = window.setTimeout(() => {
+      document.documentElement.classList.remove(shakeClass);
+      shakeTimeoutRef.current = null;
+      activeShakeClassRef.current = null;
+    }, shakeDuration);
+
+    if (cueTimeoutRef.current !== null) {
+      window.clearTimeout(cueTimeoutRef.current);
+      cueTimeoutRef.current = null;
+    }
+
+    setActiveCue({ cueId, tone, message });
+
+    if (tone !== "chapter") {
+      cueTimeoutRef.current = window.setTimeout(() => {
+        setActiveCue(null);
+        cueTimeoutRef.current = null;
+      }, 4500);
+    }
+  }
+
+  async function broadcastDirectorCue(cueId: string, tone: string, messageText: string) {
+    triggerDirectorCueLocally(cueId, tone, messageText);
+
+    if (realtimeChannelRef.current && !demoMode) {
+      realtimeChannelRef.current.send({
+        type: "broadcast",
+        event: "director-cue",
+        payload: { cueId, tone, message: messageText }
+      });
+    }
+
+    let cueLabel = "Evento";
+    if (tone === "reveal") cueLabel = "Rivelazione";
+    else if (tone === "danger") cueLabel = "Pericolo";
+    else if (tone === "vision") cueLabel = "Visione";
+    else if (tone === "chapter") cueLabel = "Fine Capitolo";
+    else if (tone === "earthquake") cueLabel = "Terremoto";
+
+    await publishMessage(`[EVENTO] Cue di Regia: ${cueLabel} - "${messageText}"`, false, undefined, "master");
   }
 
   async function broadcastMapSync(nextState: RoomState) {
@@ -322,6 +402,16 @@ export function AppShell() {
           if (payload && payload.revision !== mapSyncRevisionRef.current) {
             mapSyncRevisionRef.current = payload.revision;
             setRoomState((state) => applyMapSyncState(state, payload));
+          }
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "director-cue" },
+        (response) => {
+          const payload = response.payload as { cueId: string; tone: string; message: string };
+          if (payload) {
+            triggerDirectorCueLocally(payload.cueId, payload.tone, payload.message);
           }
         }
       );
@@ -580,6 +670,49 @@ export function AppShell() {
 
   async function publishMessage(content: string, isPrivate = false, recipientUserId?: string, explicitIdentityId = identityId, channel: "gdr" | "off" = "gdr") {
     const wantsMasterIdentity = explicitIdentityId !== "player";
+
+    // Intercept and parse dice roll commands (/roll or /r)
+    let rawContent = content;
+    let replyPrefix = "";
+    const replyMatch = content.match(/^(\[reply-to:[^:]+:[^\]]+\]\s*)(.*)$/i);
+    if (replyMatch) {
+      replyPrefix = replyMatch[1];
+      rawContent = replyMatch[2];
+    }
+
+    const rollMatch = rawContent.match(/^\/(roll|r)\s+(\d+)?d(\d+)([\+\-]\d+)?(?:\s+(.*))?$/i);
+    if (rollMatch && channel === "gdr") {
+      const count = rollMatch[2] ? parseInt(rollMatch[2], 10) : 1;
+      const sides = parseInt(rollMatch[3], 10);
+      const modStr = rollMatch[4];
+      const modifier = modStr ? parseInt(modStr, 10) : 0;
+      const reason = rollMatch[5] ? rollMatch[5].trim() : "";
+
+      if (sides > 0 && count > 0 && count <= 50) {
+        const roll = rollDiceValues(count, sides);
+        const totalWithMod = roll.total + modifier;
+        const modifierText = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : "";
+        
+        let rollDetail = "";
+        if (count > 1) {
+          rollDetail = `[${roll.results.join(", ")}]${modifierText} totale ${totalWithMod}`;
+        } else {
+          rollDetail = modifier !== 0 ? `${roll.total}${modifierText} = ${totalWithMod}` : `${roll.total}`;
+        }
+
+        const npc = roomState.npcs.find((item) => item.id === explicitIdentityId);
+        const charName = currentCharacter
+          ? `${currentCharacter.character_name} ${currentCharacter.character_surname}`
+          : roomState.profile.username;
+        const senderName = npc
+          ? npc.name
+          : explicitIdentityId === "player"
+            ? charName
+            : "Master";
+
+        content = `${replyPrefix}${senderName} tira ${count}d${sides}${modifierText}: ${rollDetail}${reason ? ` (${reason})` : ""}`;
+      }
+    }
 
     if (channel === "gdr" && explicitIdentityId === "player" && (roomState.room.chat_enabled === false || roomState.room.muted_user_ids?.includes(roomState.profile.id))) {
       setError(roomState.room.chat_enabled === false ? "La chat comune e disattivata dal Master." : "Il Master ha disattivato la tua chat.");
@@ -1862,12 +1995,25 @@ export function AppShell() {
           onUpdateMapCharacterPosition={updateMapCharacterPosition}
           onLoadOlderMessages={loadOlderMessages}
           onExportMessages={loadFullChatForExport}
+          onQuickCue={broadcastDirectorCue}
           actionLog={actionLog}
           onSaveRoom={saveRoom}
           onDeleteRoom={closeAndDeleteRoom}
         />
       ) : null}
       {cinematicEvent ? <CinematicEventOverlay event={cinematicEvent} onClose={() => setCinematicEvent(null)} /> : null}
+      {activeCue ? (
+        <ActiveCueOverlay
+          cue={activeCue}
+          onClose={() => {
+            if (cueTimeoutRef.current !== null) {
+              window.clearTimeout(cueTimeoutRef.current);
+              cueTimeoutRef.current = null;
+            }
+            setActiveCue(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2157,4 +2303,51 @@ function withClientTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
       window.setTimeout(() => reject(new Error(message)), timeoutMs);
     })
   ]);
+}
+
+function ActiveCueOverlay({
+  cue,
+  onClose
+}: {
+  cue: { cueId: string; tone: string; message: string };
+  onClose: () => void;
+}) {
+  const isChapter = cue.tone === "chapter";
+
+  if (isChapter) {
+    return (
+      <div
+        className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-black/95 px-6 text-center select-none"
+        style={{ pointerEvents: "auto" }}
+      >
+        <div className="max-w-2xl space-y-8 animate-[premium-rise_0.6s_ease_both]">
+          <p className="font-mono text-xs uppercase tracking-[0.3em] text-amber-500/80 animate-[cinematic-glow_3s_infinite_ease-in-out]">
+            Capitolo Concluso
+          </p>
+          <div className="h-[2px] w-24 bg-gradient-to-r from-transparent via-amber-500 to-transparent mx-auto animate-[cinematic-line_1.2s_ease_both]" />
+          <h2 className="font-serif text-4xl md:text-5xl text-stone-100 leading-snug">
+            {cue.message}
+          </h2>
+          <div className="h-[2px] w-24 bg-gradient-to-r from-transparent via-amber-500 to-transparent mx-auto animate-[cinematic-line_1.2s_ease_both]" />
+          <div className="pt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-8 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 active:scale-95 font-serif text-lg tracking-wider transition-all duration-200 shadow-[0_0_15px_rgba(245,158,11,0.08)]"
+            >
+              Continua
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Non-blocking overlay
+  return (
+    <div
+      className={`cue-overlay cue-overlay--${cue.tone}`}
+      style={{ pointerEvents: "none" }}
+    />
+  );
 }

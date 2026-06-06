@@ -47,15 +47,26 @@ export function SceneStage({ scene, compact = false, audioVolume = 55, audioMute
       setPrevScene(displayScene);
       setDisplayScene(scene);
       setIsFading(true);
-
-      const timer = setTimeout(() => {
-        setIsFading(false);
-        setPrevScene(null);
-      }, 600); // tempo della transizione CSS
-
-      return () => clearTimeout(timer);
     }
   }, [scene, displayScene]);
+
+  useEffect(() => {
+    if (isFading) {
+      const timer = setTimeout(() => {
+        setIsFading(false);
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [isFading]);
+
+  useEffect(() => {
+    if (prevScene) {
+      const timer = setTimeout(() => {
+        setPrevScene(null);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [prevScene]);
 
   // Particle Engine Canvas
   useEffect(() => {
@@ -264,9 +275,9 @@ export function SceneStage({ scene, compact = false, audioVolume = 55, audioMute
           </div>
         ) : null}
 
-        {/* Layer della scena precedente (in dissolvenza) */}
+        {/* Layer della scena precedente (sfondo solido su cui sfuma la nuova) */}
         {prevScene && prevMediaUrl && (
-          <div className="absolute inset-0 z-10 opacity-100 transition-opacity duration-500 ease-out pointer-events-none">
+          <div className="absolute inset-0 z-0 pointer-events-none">
             {prevIsVideo ? (
               <video
                 className={`${mediaClassName} bg-black object-cover`}
@@ -286,7 +297,7 @@ export function SceneStage({ scene, compact = false, audioVolume = 55, audioMute
         )}
 
         {/* Layer della scena attiva */}
-        <div className={`scene-stage-active-wrap relative z-0 ${isFading ? "is-entering" : ""}`}>
+        <div className={`scene-stage-active-wrap relative z-10 transition-opacity duration-700 ease-in-out ${isFading ? "opacity-0" : "opacity-100"}`}>
           {isVideo ? (
             <video
               className={`${mediaClassName} bg-black object-cover`}

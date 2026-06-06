@@ -149,7 +149,7 @@ export function SpotlightPanel({ room, npcs, currentUserId }: { room: Room; npcs
             {npc.name}
           </p>
           <div className="mt-2 text-sm leading-relaxed text-slate-200 bg-white/[0.02] border border-white/[0.04] p-3 rounded-lg font-light italic">
-            "{npc.description}"
+            &ldquo;{npc.description}&rdquo;
           </div>
         </div>
       </div>

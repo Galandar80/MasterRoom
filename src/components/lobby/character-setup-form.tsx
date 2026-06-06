@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ImageUp, UserRoundPlus, Sparkles, Shield, VenetianMask, Cpu, Eye, Swords, Heart, Target, Flame, Crown, Wand2 } from "lucide-react";
+import { ArrowLeft, ImageUp, UserRoundPlus, Sparkles, Shield, VenetianMask, Cpu, Eye, Swords, Heart, Target, Flame, Crown, Wand2, Music, Compass, Sun, FlaskConical } from "lucide-react";
 import { useState } from "react";
 import { playUiClick, playUiHover, playUiWhisper, playUiModalOpen, playUiCriticalSuccess } from "@/lib/sound-generator";
 
@@ -121,6 +121,61 @@ const ARCHETYPES = [
     color: "#eab308",
     portraitUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=600",
     background: "Esponente dell'alta società. Utilizza influenza politica, ricchezza economica e manipolazione verbale come strumenti primari."
+  },
+  {
+    id: "bardo",
+    name: "Bardo",
+    subtitle: "Fascino, racconti e ispirazione",
+    icon: <Music size={16} />,
+    hp: 10,
+    mentalState: "Istrionico",
+    color: "#ec4899",
+    portraitUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&q=80&w=600",
+    background: "Un performer carismatico che usa la musica, le parole e il teatro per ispirare gli alleati, confondere i nemici ed insinuarsi nei cuori della gente."
+  },
+  {
+    id: "cacciatore",
+    name: "Cacciatore / Ranger",
+    subtitle: "Tracciamento selvaggio e tiro preciso",
+    icon: <Compass size={16} />,
+    hp: 12,
+    mentalState: "Vigile",
+    color: "#84cc16",
+    portraitUrl: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=600",
+    background: "Esperto di sopravvivenza in terre selvagge. Sa leggere le tracce del terreno, anticipare il vento ed eliminare minacce a distanza."
+  },
+  {
+    id: "cavaliere",
+    name: "Cavaliere / Paladino",
+    subtitle: "Codice d'onore e difesa incrollabile",
+    icon: <Shield size={16} />,
+    hp: 16,
+    mentalState: "Devoto",
+    color: "#f59e0b",
+    portraitUrl: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=600",
+    background: "Guerriero consacrato a un ideale di giustizia. Affronta l'oscurità con il peso del suo scudo e del suo credo protettivo."
+  },
+  {
+    id: "sacerdote",
+    name: "Sacerdote / Chierico",
+    subtitle: "Miracoli di fede e purificazione",
+    icon: <Sun size={16} />,
+    hp: 11,
+    mentalState: "Pio",
+    color: "#38bdf8",
+    portraitUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=600",
+    background: "Canale vivente della volontà divina. Benedice le anime dei giusti e cura le ferite purificando la corruzione."
+  },
+  {
+    id: "alchimista",
+    name: "Alchimista / Inventore",
+    subtitle: "Pozioni ed esperimenti instabili",
+    icon: <FlaskConical size={16} />,
+    hp: 10,
+    mentalState: "Geniale",
+    color: "#ea580c",
+    portraitUrl: "https://images.unsplash.com/photo-1532187643603-ba119ca4109e?auto=format&fit=crop&q=80&w=600",
+    background: "Scienziato d'avanguardia che miscela estratti rari. Crea pozioni curative miracolose o fiasche infuocate esplosive."
   },
   {
     id: "personalizzato",
@@ -303,7 +358,7 @@ export function CharacterSetupForm({ defaultName, onBack, onCreate }: CharacterS
             ) : (
               <div className="flex h-48 w-48 flex-col items-center justify-center rounded-xl border border-dashed border-brass/30 bg-brass/5 text-brass/70 gap-2 p-4 text-center">
                 <Wand2 size={32} className="animate-pulse" />
-                <span className="text-xs text-stone-300">Carica un file o fornisci l'URL del portrait</span>
+                <span className="text-xs text-stone-300">Carica un file o fornisci l&apos;URL del portrait</span>
               </div>
             )}
             <p className="mt-4 text-center font-serif text-lg font-bold" style={{ color: values.color }}>
@@ -320,7 +375,7 @@ export function CharacterSetupForm({ defaultName, onBack, onCreate }: CharacterS
             {appearance && (
               <p className="mb-2 text-[10px] uppercase text-brass font-bold">Aspetto: <span className="text-stone-300 normal-case">{appearance}</span></p>
             )}
-            <p className="italic">"{publicBio || "Nessuna biografia inserita."}"</p>
+            <p className="italic">&ldquo;{publicBio || "Nessuna biografia inserita."}&rdquo;</p>
           </div>
         </aside>
 

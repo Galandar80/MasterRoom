@@ -73,6 +73,7 @@ type MasterControlRoomProps = {
   onUpdateMapCharacterPosition: (position: MapCharacterPosition, values: { x: number; y: number; narrativeLocation: string; isVisibleToPlayers: boolean; isLocked: boolean }) => void | Promise<void>;
   onLoadOlderMessages: () => void;
   onExportMessages: () => Promise<Message[]>;
+  onQuickCue: (cueId: string, tone: string, message: string) => void | Promise<void>;
   actionLog: { id: string; label: string; detail?: string; created_at: string }[];
   onSaveRoom: () => void;
   onDeleteRoom: () => void;
@@ -122,6 +123,7 @@ export function MasterControlRoom({
   onUpdateMapCharacterPosition,
   onLoadOlderMessages,
   onExportMessages,
+  onQuickCue,
   actionLog,
   onSaveRoom,
   onDeleteRoom
@@ -133,18 +135,19 @@ export function MasterControlRoom({
   const [audioVolume, setAudioVolume] = useState(55);
   const [audioMuted, setAudioMuted] = useState(false);
   const sessionMediaAssets = useMemo(() => buildSessionMediaAssets(state), [state]);
-  const sendMasterChat = () => {
-    if (!masterChatText.trim()) return;
-    onPublicMessage(masterChatText.trim());
+  const sendMasterChat = (text?: string) => {
+    const msg = text || masterChatText;
+    if (!msg.trim()) return;
+    onPublicMessage(msg.trim());
     setMasterChatText("");
   };
   const launchQuickCue = (cue: DirectorCue) => {
-    onPublicMessage(cue.message);
+    onQuickCue(cue.id, cue.tone, cue.message);
   };
 
   return (
     <section className="director-control-room relative -m-4 grid min-h-screen gap-4 overflow-hidden px-4 py-4 sm:-m-6 sm:px-5 sm:py-5">
-      <div className="pointer-events-none absolute inset-0 bg-[url('/assets/master/director-room-bg.png')] bg-cover bg-center opacity-70" />
+      <div className="pointer-events-none absolute inset-0 app-theme-bg bg-cover bg-center opacity-70" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_68%_20%,rgba(147,51,234,0.18),transparent_32rem),linear-gradient(90deg,rgba(2,3,7,0.82),rgba(3,4,9,0.62)_48%,rgba(2,3,7,0.88)),linear-gradient(180deg,rgba(0,0,0,0.25),rgba(0,0,0,0.78))]" />
       <header className="director-card relative z-10 rounded-xl p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -279,6 +282,7 @@ export function MasterControlRoom({
                   npcs={state.npcs}
                   showAvatars
                   typing={state.typing}
+                  diceRequests={state.diceRequests}
                 />
                 <ChatPermissionsPanel state={state} onUpdateChatPermissions={onUpdateChatPermissions} />
                 <DiceRequestPanel characters={state.characters} onCreate={onCreateDiceRequest} />
@@ -932,7 +936,7 @@ function downloadTextFile(filename: string, content: string) {
 type DirectorCue = {
   id: string;
   label: string;
-  tone: "reveal" | "danger" | "vision" | "chapter";
+  tone: "reveal" | "danger" | "vision" | "chapter" | "earthquake";
   message: string;
 };
 
@@ -960,6 +964,12 @@ const directorCues: DirectorCue[] = [
     label: "Fine capitolo",
     tone: "chapter",
     message: "La scena si chiude su questa immagine. Qualcosa e cambiato, e la storia non potra piu tornare al punto di prima."
+  },
+  {
+    id: "earthquake",
+    label: "Terremoto",
+    tone: "earthquake",
+    message: "Un tremito improvviso scuote le fondamenta del mondo. Mura che tremano, polvere che cade: la terra stessa si ribella."
   }
 ];
 
@@ -977,17 +987,6 @@ function DirectorCuePanel({ onLaunch }: { onLaunch: (cue: DirectorCue) => void }
               import("@/lib/sound-generator").then((mod) => mod.playUiHover());
             }}
             onClick={() => {
-              import("@/lib/sound-generator").then((mod) => {
-                if (cue.id === "chapter") {
-                  mod.playUiCriticalSuccess();
-                } else if (cue.id === "reveal") {
-                  mod.playUiWhisper();
-                } else if (cue.id === "flashback" || cue.id === "dream") {
-                  mod.playUiModalOpen();
-                } else {
-                  mod.playUiClick();
-                }
-              });
               onLaunch(cue);
             }}
             className={`director-cue-button director-cue-button--${cue.tone}`}
@@ -1164,7 +1163,16 @@ function CharactersPanel({ state, expanded = false }: { state: RoomState; expand
                   </span>
                 ))}
               </div>
-              {expanded ? <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-400">{character.public_background}</p> : null}
+              {expanded ? (() => {
+                const meta = parseCharacterMetadata(character.public_background);
+                return (
+                  <div className="mt-2 space-y-1 text-xs text-slate-400">
+                    {meta.archetype && <p><strong className="text-slate-300">Archetipo:</strong> {meta.archetype}</p>}
+                    {meta.origin && <p><strong className="text-slate-300">Origine:</strong> {meta.origin}</p>}
+                    {meta.bio && <p className="leading-relaxed"><strong className="text-slate-300">Bio:</strong> {meta.bio}</p>}
+                  </div>
+                );
+              })() : null}
               <div className="mt-2 flex flex-wrap gap-1">
                 {state.inventory
                   .filter((item) => item.character_id === character.id && item.is_public)
@@ -1722,11 +1730,60 @@ function SoundbarModal({
     setIsInitializing(true);
     try {
       const defaultSounds = [
+        // --- Original 5 ---
         { title: "Pioggia", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/rain.mp3", loop: true },
         { title: "Vento", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/wind.mp3", loop: true },
         { title: "Fuoco", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/fireplace.mp3", loop: true },
-        { title: "Passi", audioUrl: "https://actions.google.com/sounds/v1/foley/distant_footsteps_on_wood.ogg", loop: false },
-        { title: "Porta", audioUrl: "https://actions.google.com/sounds/v1/doors/creaking_wooden_door.ogg", loop: false }
+        { title: "Passi", audioUrl: "/assets/audio/distant_footsteps_on_wood.mp3", loop: false },
+        { title: "Porta", audioUrl: "/assets/audio/creaking_wooden_door.mp3", loop: false },
+
+        // --- 35 Additional High-Quality Default Sounds ---
+        // Atmosfere e Meteo
+        { title: "Oceano", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/ocean.mp3", loop: true },
+        { title: "Foresta", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/forest.mp3", loop: true },
+        { title: "Temporale", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/thunder.mp3", loop: true },
+        { title: "Taverna", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/coffee-shop.mp3", loop: true },
+        { title: "Notte Stellata", audioUrl: "https://raw.githubusercontent.com/bradtraversy/ambient-sound-mixer/main/sounds/night.mp3", loop: true },
+        { title: "Pioggia Tetto", audioUrl: "/assets/audio/rain_on_roof.mp3", loop: true },
+        { title: "Pioggia Forte", audioUrl: "/assets/audio/rain_heavy_loud.mp3", loop: true },
+        { title: "Vento Tempesta", audioUrl: "/assets/audio/wind_howling.mp3", loop: true },
+        
+        // Foley & Dungeon SFX
+        { title: "Fulmine", audioUrl: "/assets/audio/thunder_crack.mp3", loop: false },
+        { title: "Caduta Sassi", audioUrl: "/assets/audio/stone_drop.mp3", loop: false },
+        { title: "Bossoli Caduta", audioUrl: "/assets/audio/50_cal_shells_drop.mp3", loop: false },
+        { title: "Arma Ricarica", audioUrl: "/assets/audio/50cal_gun_cock_and_dry_fire.mp3", loop: false },
+
+        // Creature e Animali
+        { title: "Grilli Notte", audioUrl: "/assets/audio/afternoon_crickets_long.mp3", loop: true },
+        { title: "Cicale", audioUrl: "/assets/audio/cicada_chirp.mp3", loop: true },
+        { title: "Mosca Volante", audioUrl: "/assets/audio/buzzing_fly.mp3", loop: true },
+        { title: "Gatto Fusa", audioUrl: "/assets/audio/cat_purr.mp3", loop: true },
+        { title: "Corvo", audioUrl: "/assets/audio/crow_call.mp3", loop: false },
+        { title: "Lupo / Ringhio", audioUrl: "/assets/audio/animal_bark_and_growl.mp3", loop: false },
+
+        // Magia e Sci-Fi
+        { title: "Sci-Fi Vortex", audioUrl: "/assets/audio/sci_fi_vortex.mp3", loop: true },
+        { title: "Canto Alieno", audioUrl: "/assets/audio/alien_song.mp3", loop: true },
+        { title: "Respiro Alieno", audioUrl: "/assets/audio/alien_breath.mp3", loop: true },
+        { title: "Spazio Vuoto", audioUrl: "/assets/audio/outer_space.mp3", loop: true },
+        { title: "Risonanza Cupa", audioUrl: "/assets/audio/forboding_resonance.mp3", loop: true },
+        { title: "Ronzio Elettr.", audioUrl: "/assets/audio/electric_ring_long.mp3", loop: true },
+        { title: "Codice Robot", audioUrl: "/assets/audio/robot_code.mp3", loop: false },
+
+        // Orrore e Mostri
+        { title: "Zombie Ringhio", audioUrl: "/assets/audio/aggressive_zombie_snarls.mp3", loop: false },
+        { title: "Strido Mostro", audioUrl: "/assets/audio/alien_squawk_echo.mp3", loop: false },
+        { title: "Taglio Carne", audioUrl: "/assets/audio/cutting_flesh.mp3", loop: false },
+        { title: "Graffio Umido", audioUrl: "/assets/audio/carving_wet_scrape.mp3", loop: false },
+
+        // Allarmi e UI
+        { title: "Sveglia Camp.", audioUrl: "/assets/audio/alarm_clock.mp3", loop: false },
+        { title: "Sveglia Digit.", audioUrl: "/assets/audio/digital_watch_alarm_long.mp3", loop: false },
+        { title: "Fanfara Tada", audioUrl: "/assets/audio/tada_fanfare_a.mp3", loop: false },
+        { title: "Tromba Adunata", audioUrl: "/assets/audio/bugle_tune.mp3", loop: false },
+        { title: "Sirena Ambul.", audioUrl: "/assets/audio/ambulance_drive_siren.mp3", loop: false },
+        { title: "Beep Emergenza", audioUrl: "/assets/audio/beeper_emergency_call.mp3", loop: false }
       ];
       for (const sound of defaultSounds) {
         await onCreateSoundEffect(sound);
@@ -1771,7 +1828,7 @@ function SoundbarModal({
               disabled={isInitializing}
               className="rounded-md border border-brass/30 bg-brass/15 px-3 py-1.5 text-xs font-medium text-brass transition hover:bg-brass/25 disabled:opacity-60"
             >
-              {isInitializing ? "Caricamento..." : "Carica default (Pioggia, Vento, Fuoco, Passi, Porta)"}
+              {isInitializing ? "Caricamento..." : "Carica 40 Suoni Default (Atmosfere & Effetti)"}
             </button>
           </div>
         ) : (

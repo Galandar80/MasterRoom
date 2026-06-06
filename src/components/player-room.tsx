@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import type React from "react";
-import { ArrowLeft, Backpack, BookOpenText, CircleHelp, Copy, Eye, EyeOff, MapPinned, MessageCircle, Plus, ScrollText, UsersRound, X, UserRound, Lock, BookOpen, Heart, Sparkles } from "lucide-react";
+import { ArrowLeft, Backpack, BookOpenText, CircleHelp, Copy, Eye, EyeOff, MapPinned, MessageCircle, Plus, ScrollText, UsersRound, X, UserRound, Lock, BookOpen, Heart, Sparkles, Bell, Check, ShieldAlert } from "lucide-react";
 import type { AudioTrack, Message, RoomState } from "@/lib/types";
 import { splitSides } from "@/lib/utils";
 import { AudioPlayer } from "@/components/room/audio-player";
@@ -16,6 +16,8 @@ import { PlayerDicePanel, SpotlightPanel } from "@/components/room/dice-and-spot
 import { MapToolPanel } from "@/components/room/map-tool-panel";
 import type { DiceRequest } from "@/lib/types";
 import { parseCharacterMetadata } from "@/lib/character-metadata";
+import { rollDice as rollDiceValues } from "@/lib/game-random";
+import { playUiClick, playUiHover } from "@/lib/sound-generator";
 
 
 type PlayerRoomProps = {
@@ -82,7 +84,7 @@ export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend,
           <div className="pointer-events-none fixed inset-0 z-50 animate-damage-flash border-[12px] border-red-600/35 bg-red-600/[0.06] shadow-[inset_0_0_100px_rgba(220,38,38,0.65)]" />
         </>
       )}
-      <div className="pointer-events-none absolute inset-0 bg-[url('/assets/master/director-room-bg.png')] bg-cover bg-center opacity-45" />
+      <div className="pointer-events-none absolute inset-0 app-theme-bg bg-cover bg-center opacity-45" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,3,7,0.92),rgba(3,5,9,0.68)_50%,rgba(2,3,7,0.92)),linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.82))]" />
       <div className="relative z-10 grid gap-3">
         <PlayerHeader
@@ -109,10 +111,11 @@ export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend,
             messages={state.messages}
             value={playerText}
             onChange={setPlayerText}
-            onSend={() => {
+            onSend={(text) => {
               if (chatDisabledForPlayer) return;
-              if (!playerText.trim()) return;
-              onSend(playerText.trim());
+              const msg = text || playerText;
+              if (!msg.trim()) return;
+              onSend(msg.trim());
               setPlayerText("");
             }}
             disabled={chatDisabledForPlayer}
@@ -125,6 +128,8 @@ export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend,
             npcs={state.npcs}
             showAvatars
             typing={state.typing}
+            diceRequests={state.diceRequests}
+            onRollDice={onRollDice}
           />
         </div>
         <div className={mobileTab === "sheet" ? "block" : "hidden lg:block"}>
@@ -188,6 +193,20 @@ export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend,
           onPrivateSend={onPrivateSend}
         />
       ) : null}
+
+      {/* ACTION HOTBAR (FEATURE 9) */}
+      <PlayerActionHotbar
+        state={state}
+        currentCharacter={currentCharacter}
+        profile={state.profile}
+        masterId={state.campaigns[0].master_id}
+        onSend={onSend}
+        onPrivateSend={onPrivateSend}
+        inviteCode={state.room.invite_code}
+        immersiveMode={immersiveMode}
+        onToggleImmersive={() => setImmersiveMode((value) => !value)}
+        onOpenUtility={setUtilityPanel}
+      />
     </section>
   );
 }
@@ -657,5 +676,190 @@ function MobilePlayerTabs({ active, onChange }: { active: MobileTab; onChange: (
         </button>
       ))}
     </nav>
+  );
+}
+
+type PlayerActionHotbarProps = {
+  state: RoomState;
+  currentCharacter?: RoomState["characters"][number];
+  profile: RoomState["profile"];
+  masterId: string;
+  onSend: (content: string) => void;
+  onPrivateSend: (content: string, recipientUserId: string) => void;
+  inviteCode: string;
+  immersiveMode: boolean;
+  onToggleImmersive: () => void;
+  onOpenUtility: (panel: Exclude<UtilityPanel, null>) => void;
+};
+
+function PlayerActionHotbar({
+  state,
+  currentCharacter,
+  profile,
+  masterId,
+  onSend,
+  onPrivateSend,
+  inviteCode,
+  immersiveMode,
+  onToggleImmersive,
+  onOpenUtility
+}: PlayerActionHotbarProps) {
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const visibleDiceRequests = state.diceRequests.filter(
+    (request) => !request.target_user_id || request.target_user_id === state.profile.id
+  );
+  const spotlightVisible = state.room.spotlight_visibility !== "off" && Boolean(state.room.spotlight_npc_id);
+  const spotlightNpc = spotlightVisible ? state.npcs.find((n) => n.id === state.room.spotlight_npc_id) : null;
+  const privateCount = state.privateMessages.length;
+  const totalNotifications = visibleDiceRequests.length + (spotlightVisible ? 1 : 0);
+
+  return (
+    <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 flex items-center gap-3 rounded-full border border-white/10 bg-ink-950/90 px-4 py-2.5 shadow-2xl shadow-black/80 backdrop-blur-lg transition-all duration-300">
+      
+      {/* 🔔 Notifications Hub */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => { setShowNotifications(!showNotifications); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className={`relative flex h-8 w-8 items-center justify-center rounded-full border transition ${showNotifications ? "border-brass bg-brass/20 text-brass" : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass"}`}
+          title="Notifiche attive"
+        >
+          <Bell size={14} />
+          {totalNotifications > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold text-white animate-pulse">
+              {totalNotifications}
+            </span>
+          )}
+        </button>
+
+        {showNotifications && (
+          <div className="absolute bottom-12 left-0 z-50 w-64 rounded-xl border border-white/10 bg-ink-950/95 p-3 shadow-xl backdrop-blur-md space-y-2 text-left">
+            <h3 className="text-xs font-semibold text-brass uppercase tracking-wider flex items-center gap-1.5 pb-1.5 border-b border-white/5">
+              <Bell size={12} /> Notifiche Attive
+            </h3>
+            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              {visibleDiceRequests.map((req) => (
+                <div key={req.id} className="flex flex-col gap-1 rounded bg-white/[0.02] border border-white/5 p-2 text-[11px] text-slate-300">
+                  <span className="font-semibold text-rose-300 flex items-center gap-1">
+                    <ShieldAlert size={11} /> Richiesta tiro dadi
+                  </span>
+                  <span>Il Master richiede un tiro di <strong>d{req.dice_sides}</strong> per: &ldquo;{req.reason}&rdquo;</span>
+                </div>
+              ))}
+              {spotlightVisible && spotlightNpc && (
+                <div className="flex flex-col gap-0.5 rounded bg-white/[0.02] border border-white/5 p-2 text-[11px] text-slate-300">
+                  <span className="font-semibold text-brass flex items-center gap-1">
+                    <Sparkles size={11} /> Evidenza (Spotlight)
+                  </span>
+                  <span>L&apos;NPC <strong>{spotlightNpc.name}</strong> è in evidenza scenica.</span>
+                </div>
+              )}
+              {privateCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { onOpenUtility("private"); setShowNotifications(false); playUiClick(); }}
+                  className="w-full flex flex-col gap-0.5 text-left rounded bg-white/[0.02] border border-white/5 p-2 text-[11px] text-slate-300 hover:bg-brass/10 hover:border-brass/20 transition"
+                >
+                  <span className="font-semibold text-sky-300 flex items-center gap-1">
+                    <MessageCircle size={11} /> Sussurri Master
+                  </span>
+                  <span>Hai <strong>{privateCount}</strong> messaggi privati scambiati col Master.</span>
+                </button>
+              )}
+              {totalNotifications === 0 && (
+                <div className="flex items-center gap-2 py-2 px-1 text-xs text-slate-500 italic">
+                  <Check size={14} className="text-emerald-500" /> Nessuna notifica attiva.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="h-4 w-px bg-white/10" />
+
+      {/* 🧰 Quick Access Utility Shortcuts */}
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => { onOpenUtility("sheet"); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass transition-all duration-200"
+          title="Apri Scheda Eroe"
+        >
+          <UserRound size={14} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { onOpenUtility("inventory"); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass transition-all duration-200"
+          title="Apri Inventario"
+        >
+          <Backpack size={14} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { onOpenUtility("map"); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass transition-all duration-200"
+          title="Apri Mappa"
+        >
+          <MapPinned size={14} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { onOpenUtility("notes"); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass transition-all duration-200"
+          title="Apri Note personali"
+        >
+          <ScrollText size={14} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { onOpenUtility("private"); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/[0.03] text-slate-300 hover:border-brass/30 hover:bg-brass/15 hover:text-brass transition-all duration-200"
+          title="Invia sussurro al Master"
+        >
+          <BookOpenText size={14} />
+        </button>
+      </div>
+
+      <div className="h-4 w-px bg-white/10" />
+
+      {/* ⚙️ UI / Copy Utilities */}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => { onToggleImmersive(); playUiClick(); }}
+          onMouseEnter={playUiHover}
+          className={`flex h-8 w-8 items-center justify-center rounded-full transition ${immersiveMode ? "bg-brass/15 text-brass" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}
+          title={immersiveMode ? "Mostra interfaccia" : "Nascondi interfaccia (Immersione)"}
+        >
+          {immersiveMode ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(inviteCode);
+            playUiClick();
+          }}
+          onMouseEnter={playUiHover}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-white/5 hover:text-white transition"
+          title="Copia codice invito"
+        >
+          <Copy size={14} />
+        </button>
+      </div>
+    </div>
   );
 }

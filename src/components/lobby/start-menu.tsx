@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { playUiClick, playUiHover } from "@/lib/sound-generator";
+import { playUiClick, playUiHover, isUiSoundsEnabled, toggleUiSounds } from "@/lib/sound-generator";
 
 type StartMenuProps = {
   onCreate: () => void;
@@ -40,6 +40,30 @@ export function StartMenu({
   const [ambienceEnabled, setAmbienceEnabled] = useState(true);
   const [ambienceVolume, setAmbienceVolume] = useState(34);
   const [moonMode, setMoonMode] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState("fantasy");
+  const [uiSoundsEnabled, setUiSoundsEnabled] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const theme = localStorage.getItem("gdr_visual_theme") || "fantasy";
+      setSelectedTheme(theme);
+      document.documentElement.className = `theme-${theme}`;
+      setUiSoundsEnabled(isUiSoundsEnabled());
+    }
+  }, []);
+
+  const handleThemeChange = (theme: string) => {
+    setSelectedTheme(theme);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gdr_visual_theme", theme);
+      document.documentElement.className = `theme-${theme}`;
+    }
+  };
+
+  const handleUiSoundsChange = (enabled: boolean) => {
+    setUiSoundsEnabled(enabled);
+    toggleUiSounds(enabled);
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -80,7 +104,10 @@ export function StartMenu({
   return (
     <section className={`premium-start-menu relative -m-4 min-h-screen overflow-hidden px-5 py-6 text-white sm:-m-6 sm:px-10 lg:px-16 ${moonMode ? "premium-start-menu--moon" : ""}`}>
       <audio ref={audioRef} src="/assets/audio/master-room-ambience-2.mp3" loop preload="auto" />
-      <div className="absolute inset-0 bg-[url('/assets/menu/master-room-hero.png')] bg-cover bg-center" />
+      <div 
+        className="absolute inset-0 bg-cover bg-center transition-all duration-700 ease-in-out" 
+        style={{ backgroundImage: `url('/assets/menu/theme-${selectedTheme}.png')` }}
+      />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(111,46,175,0.28),transparent_28rem),linear-gradient(90deg,rgba(2,3,7,0.58)_0%,rgba(2,3,7,0.2)_48%,rgba(2,3,7,0.74)_100%),linear-gradient(180deg,rgba(0,0,0,0.34)_0%,rgba(0,0,0,0.08)_42%,rgba(0,0,0,0.88)_100%)]" />
 
       <div className="relative z-10 flex min-h-[calc(100vh-3rem)] flex-col">
@@ -140,27 +167,52 @@ export function StartMenu({
         </header>
 
         {settingsOpen ? (
-          <div className="premium-settings-popover">
-            <h2>Impostazioni menu</h2>
-            <label className="premium-setting-row">
-              <span>{ambienceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />} Musica menu</span>
-              <input type="checkbox" checked={ambienceEnabled} onChange={(event) => setAmbienceEnabled(event.target.checked)} />
-            </label>
-            <label className="grid gap-2 text-sm text-stone-300">
-              Volume tema
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={ambienceVolume}
-                onChange={(event) => setAmbienceVolume(Number(event.target.value))}
-                disabled={!ambienceEnabled}
-              />
-            </label>
-            <label className="premium-setting-row">
-              <span>Modalita lunare</span>
-              <input type="checkbox" checked={moonMode} onChange={(event) => setMoonMode(event.target.checked)} />
-            </label>
+          <div className="premium-settings-popover space-y-4 p-4">
+            <h2 className="font-serif text-sm font-semibold text-brass">Impostazioni Master Room</h2>
+            
+            <div className="space-y-3">
+              <label className="premium-setting-row">
+                <span>{ambienceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />} Musica menu</span>
+                <input type="checkbox" checked={ambienceEnabled} onChange={(event) => setAmbienceEnabled(event.target.checked)} />
+              </label>
+              
+              <label className="grid gap-1.5 text-xs text-stone-300">
+                <span>Volume tema musicale</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={ambienceVolume}
+                  onChange={(event) => setAmbienceVolume(Number(event.target.value))}
+                  disabled={!ambienceEnabled}
+                  className="accent-brass"
+                />
+              </label>
+
+              <label className="premium-setting-row">
+                <span>Effetti sonori UI</span>
+                <input type="checkbox" checked={uiSoundsEnabled} onChange={(event) => handleUiSoundsChange(event.target.checked)} />
+              </label>
+
+              <label className="grid gap-1.5 text-xs text-stone-300">
+                <span>Tema Visivo (Genere)</span>
+                <select
+                  value={selectedTheme}
+                  onChange={(e) => handleThemeChange(e.target.value)}
+                  className="field px-2.5 py-1.5 text-xs bg-ink-950 border border-brass/30 text-slate-200 rounded-md focus:border-brass outline-none"
+                >
+                  <option value="fantasy">Classic Fantasy (Default)</option>
+                  <option value="cyberpunk">Cyberpunk Neon</option>
+                  <option value="lovecraft">Eldritch Terror (Cosmic)</option>
+                  <option value="scifi">Space Odyssey (Sci-Fi)</option>
+                </select>
+              </label>
+
+              <label className="premium-setting-row">
+                <span>Modalità lunare (Filtro scuro)</span>
+                <input type="checkbox" checked={moonMode} onChange={(event) => setMoonMode(event.target.checked)} />
+              </label>
+            </div>
           </div>
         ) : null}
 

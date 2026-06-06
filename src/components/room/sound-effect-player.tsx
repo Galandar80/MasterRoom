@@ -14,6 +14,16 @@ export function SoundEffectPlayer({ room, soundEffects }: SoundEffectPlayerProps
   const [blocked, setBlocked] = useState(false);
   const currentEffect = soundEffects.find((effect) => effect.id === room.current_sound_effect_id);
 
+  // Mappa gli audio OGG remoti di Google Actions sui corrispettivi MP3 locali
+  const getAudioUrl = (url: string) => {
+    if (url && url.startsWith("https://actions.google.com/sounds/v1/")) {
+      const filename = url.substring(url.lastIndexOf("/") + 1);
+      const mp3Name = filename.replace(/\.ogg$/, ".mp3");
+      return `/assets/audio/${mp3Name}`;
+    }
+    return url;
+  };
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -27,13 +37,17 @@ export function SoundEffectPlayer({ room, soundEffects }: SoundEffectPlayerProps
       return;
     }
 
-    audio.src = currentEffect.audio_url;
+    const resolvedUrl = getAudioUrl(currentEffect.audio_url);
+    audio.src = resolvedUrl;
     audio.loop = currentEffect.loop;
     audio.currentTime = 0;
 
     const playAttempt = audio.play();
     if (playAttempt) {
-      playAttempt.catch(() => setBlocked(true));
+      playAttempt.catch((err) => {
+        console.warn("Riproduzione audio bloccata o fallita per:", resolvedUrl, err);
+        setBlocked(true);
+      });
     }
   }, [currentEffect?.audio_url, currentEffect?.loop, room.sound_effect_started_at]);
 
