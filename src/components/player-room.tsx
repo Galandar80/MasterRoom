@@ -1,0 +1,661 @@
+"use client";
+
+import { useMemo, useState, useEffect, useRef } from "react";
+import type React from "react";
+import { ArrowLeft, Backpack, BookOpenText, CircleHelp, Copy, Eye, EyeOff, MapPinned, MessageCircle, Plus, ScrollText, UsersRound, X, UserRound, Lock, BookOpen, Heart, Sparkles } from "lucide-react";
+import type { AudioTrack, Message, RoomState } from "@/lib/types";
+import { splitSides } from "@/lib/utils";
+import { AudioPlayer } from "@/components/room/audio-player";
+import { ChatPanel } from "@/components/room/chat-panel";
+import { CharacterRail } from "@/components/room/character-rail";
+import { PlayerDrawer } from "@/components/room/player-drawer";
+import { SceneStage } from "@/components/room/scene-stage";
+import { SoundEffectPlayer } from "@/components/room/sound-effect-player";
+import { ExportChatButton, OffChatPanel, PrivateThreadsPanel } from "@/components/room/social-panels";
+import { PlayerDicePanel, SpotlightPanel } from "@/components/room/dice-and-spotlight";
+import { MapToolPanel } from "@/components/room/map-tool-panel";
+import type { DiceRequest } from "@/lib/types";
+import { parseCharacterMetadata } from "@/lib/character-metadata";
+
+
+type PlayerRoomProps = {
+  state: RoomState;
+  currentAudio: AudioTrack;
+  onBack: () => void;
+  onSend: (content: string) => void;
+  onPrivateSend: (content: string, recipientUserId: string) => void;
+  onOffSend: (content: string) => void;
+  onTyping: (channel: "gdr" | "off" | "private", recipientUserId?: string | null) => void;
+  onRollDice: (request: DiceRequest) => void;
+  onCreateNote: (values: { title: string; content: string }) => void;
+  onLoadOlderMessages: () => void;
+  onExportMessages: () => Promise<Message[]>;
+};
+
+type MobileTab = "chat" | "map" | "sheet" | "private" | "off";
+type UtilityPanel = "notes" | "inventory" | "private" | "map" | "sheet" | "help" | null;
+
+export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend, onOffSend, onTyping, onRollDice, onCreateNote, onLoadOlderMessages, onExportMessages }: PlayerRoomProps) {
+  const [playerText, setPlayerText] = useState("");
+  const [offText, setOffText] = useState("");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  const [utilityPanel, setUtilityPanel] = useState<UtilityPanel>(null);
+  const [immersiveMode, setImmersiveMode] = useState(false);
+  const [damageFlash, setDamageFlash] = useState(false);
+  const prevHpRef = useRef<number | undefined>(undefined);
+
+  const [leftCharacters, rightCharacters] = useMemo(() => splitSides(state.characters), [state.characters]);
+  const currentCharacter = state.characters.find((character) => character.user_id === state.profile.id) ?? state.characters[0];
+
+  useEffect(() => {
+    if (currentCharacter) {
+      if (prevHpRef.current !== undefined && currentCharacter.hp < prevHpRef.current) {
+        import("@/lib/sound-generator").then((mod) => mod.playUiDamage());
+        setDamageFlash(true);
+        const timer = setTimeout(() => setDamageFlash(false), 900);
+        return () => clearTimeout(timer);
+      }
+      prevHpRef.current = currentCharacter.hp;
+    }
+  }, [currentCharacter?.hp]);
+  const visibleDiceRequests = state.diceRequests.filter((request) => !request.target_user_id || request.target_user_id === state.profile.id);
+  const spotlightVisible = state.room.spotlight_visibility !== "off" && Boolean(state.room.spotlight_npc_id);
+  const soundEffectVisible = Boolean(state.room.current_sound_effect_id);
+  const chatDisabledForPlayer = state.room.chat_enabled === false || Boolean(state.room.muted_user_ids?.includes(state.profile.id));
+  const disabledReason =
+    state.room.chat_enabled === false ? "Chat comune disattivata dal Master" : "Il Master ha disattivato la tua chat";
+
+  return (
+    <section className={`player-room-shell relative -m-4 min-h-screen overflow-hidden px-3 py-3 sm:-m-6 sm:px-4 sm:py-4 ${immersiveMode ? "is-immersive" : ""}`}>
+      {damageFlash && (
+        <>
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes damage-pulse {
+              0% { opacity: 0; }
+              10% { opacity: 1; }
+              100% { opacity: 0; }
+            }
+            .animate-damage-flash {
+              animation: damage-pulse 0.9s ease-out forwards;
+            }
+          `}} />
+          <div className="pointer-events-none fixed inset-0 z-50 animate-damage-flash border-[12px] border-red-600/35 bg-red-600/[0.06] shadow-[inset_0_0_100px_rgba(220,38,38,0.65)]" />
+        </>
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-[url('/assets/master/director-room-bg.png')] bg-cover bg-center opacity-45" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,3,7,0.92),rgba(3,5,9,0.68)_50%,rgba(2,3,7,0.92)),linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.82))]" />
+      <div className="relative z-10 grid gap-3">
+        <PlayerHeader
+          state={state}
+          onBack={onBack}
+          privateCount={state.privateMessages.length}
+          currentCharacter={currentCharacter}
+          onOpenUtility={setUtilityPanel}
+          immersiveMode={immersiveMode}
+          onToggleImmersive={() => setImmersiveMode((value) => !value)}
+        />
+        <MobileCharacterStrip characters={state.characters} currentUserId={state.profile.id} />
+        <div className={`grid gap-3 ${immersiveMode ? "xl:grid-cols-[minmax(0,1fr)]" : "xl:grid-cols-[17rem_minmax(0,1fr)_17rem]"}`}>
+      {immersiveMode ? null : <CharacterRail side="left" characters={leftCharacters} inventory={state.inventory} presence={state.presence} />}
+
+      <div className="grid min-w-0 gap-3">
+        {spotlightVisible ? <SpotlightPanel room={state.room} npcs={state.npcs} currentUserId={state.profile.id} /> : null}
+        {soundEffectVisible ? <SoundEffectPlayer room={state.room} soundEffects={state.soundEffects} /> : null}
+        <SceneStage scene={state.scene} compact />
+        {visibleDiceRequests.length > 0 ? <PlayerDicePanel requests={visibleDiceRequests} onRoll={onRollDice} /> : null}
+        <MobilePlayerTabs active={mobileTab} onChange={setMobileTab} />
+        <div className={mobileTab === "chat" ? "block" : "hidden lg:block"}>
+          <ChatPanel
+            messages={state.messages}
+            value={playerText}
+            onChange={setPlayerText}
+            onSend={() => {
+              if (chatDisabledForPlayer) return;
+              if (!playerText.trim()) return;
+              onSend(playerText.trim());
+              setPlayerText("");
+            }}
+            disabled={chatDisabledForPlayer}
+            disabledReason={disabledReason}
+            onTyping={() => onTyping("gdr")}
+            onLoadOlder={onLoadOlderMessages}
+            hasOlderMessages={state.hasOlderMessages}
+            currentUserId={state.profile.id}
+            characters={state.characters}
+            npcs={state.npcs}
+            showAvatars
+            typing={state.typing}
+          />
+        </div>
+        <div className={mobileTab === "sheet" ? "block" : "hidden lg:block"}>
+          <ExportChatButton messages={[...state.messages, ...state.offMessages, ...state.privateMessages]} onLoadAll={onExportMessages} />
+          <div className="mt-4">
+            <PlayerDrawer
+              character={currentCharacter}
+              inventory={state.inventory}
+              notes={state.notes}
+              privateMessages={state.privateMessages}
+              onCreateNote={onCreateNote}
+            />
+          </div>
+        </div>
+        <div className={mobileTab === "map" ? "block" : "hidden lg:block"}>
+          <MapToolPanel state={state} isMaster={false} />
+        </div>
+        <div className={mobileTab === "private" ? "block" : "hidden lg:block"}>
+          <details className="glass-panel rounded-lg p-4" open>
+            <summary className="cursor-pointer text-sm font-semibold text-white">Privati con il Master</summary>
+            <div className="mt-4">
+              <PrivateThreadsPanel
+                profile={state.profile}
+                characters={state.characters}
+                messages={state.privateMessages}
+                masterId={state.campaigns[0].master_id}
+                isMaster={false}
+                onSend={onPrivateSend}
+              />
+            </div>
+          </details>
+        </div>
+        <div className={mobileTab === "off" ? "block" : "hidden lg:block"}>
+          <OffChatPanel
+            messages={state.offMessages}
+            value={offText}
+            onChange={(value) => {
+              setOffText(value);
+              if (value.trim()) onTyping("off");
+            }}
+            onSend={() => {
+              if (!offText.trim()) return;
+              onOffSend(offText.trim());
+              setOffText("");
+            }}
+          />
+        </div>
+        <AudioPlayer track={currentAudio} />
+      </div>
+
+      {immersiveMode ? null : <CharacterRail side="right" characters={rightCharacters} inventory={state.inventory} presence={state.presence} />}
+        </div>
+      </div>
+      {currentCharacter ? (
+        <PlayerUtilityModal
+          panel={utilityPanel}
+          state={state}
+          character={currentCharacter}
+          onClose={() => setUtilityPanel(null)}
+          onCreateNote={onCreateNote}
+          onPrivateSend={onPrivateSend}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function PlayerHeader({
+  state,
+  onBack,
+  privateCount,
+  currentCharacter,
+  onOpenUtility,
+  immersiveMode,
+  onToggleImmersive
+}: {
+  state: RoomState;
+  onBack: () => void;
+  privateCount: number;
+  currentCharacter?: RoomState["characters"][number];
+  onOpenUtility: (panel: Exclude<UtilityPanel, null>) => void;
+  immersiveMode: boolean;
+  onToggleImmersive: () => void;
+}) {
+  return (
+    <header className="player-room-header rounded-xl p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <button type="button" onClick={onBack} className="player-logo-mark" title="Torna al menu" aria-label="Torna al menu">
+            <span />
+          </button>
+          <button type="button" onClick={onBack} className="player-menu-button">
+            <ArrowLeft size={16} /> Menu
+          </button>
+          <div className="min-w-0">
+            <p className="player-session-kicker">Stanza narrativa</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="truncate font-serif text-2xl text-stone-100 sm:text-3xl">{state.campaigns[0].title}</h1>
+              <span className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">In corso</span>
+            </div>
+            <p className="mt-1 text-sm text-stone-300">{state.room.name} · {state.scene.title}</p>
+            <p className="mt-1 line-clamp-1 text-sm text-stone-400">{state.campaigns[0].description}</p>
+          </div>
+        </div>
+        <div className="grid gap-2 xl:min-w-[36rem]">
+          {currentCharacter ? (
+            <div className="player-current-strip">
+              <span className="h-12 w-12 shrink-0 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url(${currentCharacter.portrait_url})` }} />
+              <span className="min-w-0">
+                <small>Stai interpretando</small>
+                <strong style={{ color: currentCharacter.color }}>{currentCharacter.character_name} {currentCharacter.character_surname}</strong>
+              </span>
+              <span className="player-current-stat">PF {currentCharacter.hp}</span>
+            </div>
+          ) : null}
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            <HeaderAction icon={<ScrollText size={16} />} label="Note" onClick={() => onOpenUtility("notes")} />
+            <HeaderAction icon={<Backpack size={16} />} label="Inventario" onClick={() => onOpenUtility("inventory")} />
+            <HeaderAction icon={<BookOpenText size={16} />} label="Sussurri" badge={privateCount} onClick={() => onOpenUtility("private")} />
+            <HeaderAction icon={<MapPinned size={16} />} label="Mappa" onClick={() => onOpenUtility("map")} />
+            <HeaderAction icon={immersiveMode ? <EyeOff size={16} /> : <Eye size={16} />} label={immersiveMode ? "UI" : "Immersione"} onClick={onToggleImmersive} />
+            <HeaderAction icon={<UserRound size={16} />} label="Scheda" onClick={() => onOpenUtility("sheet")} />
+            <InfoTile label="Stanza" value={state.scene.title} />
+            <InfoTile label="Codice invito" value={state.room.invite_code} copy />
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function HeaderAction({ icon, label, badge, onClick }: { icon: React.ReactNode; label: string; badge?: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="player-header-action"
+      onMouseEnter={() => {
+        import("@/lib/sound-generator").then((mod) => mod.playUiHover());
+      }}
+      onClick={() => {
+        import("@/lib/sound-generator").then((mod) => {
+          mod.playUiClick();
+          mod.playUiModalOpen();
+        });
+        onClick();
+      }}
+    >
+      {icon}
+      {label ? <span>{label}</span> : null}
+      {badge ? <strong>{badge}</strong> : null}
+    </button>
+  );
+}
+
+function MobileCharacterStrip({ characters, currentUserId }: { characters: RoomState["characters"]; currentUserId: string }) {
+  return (
+    <section className="mobile-character-strip xl:hidden">
+      {characters.map((character) => (
+        <article key={character.id} className={character.user_id === currentUserId ? "is-current" : ""}>
+          <span className="h-10 w-10 shrink-0 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url(${character.portrait_url})` }} />
+          <span className="min-w-0">
+            <strong style={{ color: character.color }}>{character.character_name}</strong>
+            <small>PF {character.hp} · {character.visible_status}</small>
+          </span>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function PlayerUtilityModal({
+  panel,
+  state,
+  character,
+  onClose,
+  onCreateNote,
+  onPrivateSend
+}: {
+  panel: UtilityPanel;
+  state: RoomState;
+  character: NonNullable<RoomState["characters"][number]>;
+  onClose: () => void;
+  onCreateNote: (values: { title: string; content: string }) => void;
+  onPrivateSend: (content: string, recipientUserId: string) => void;
+}) {
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [sheetTab, setSheetTab] = useState<"dossier" | "help">("dossier");
+  if (!panel) return null;
+
+  const characterItems = state.inventory.filter((item) => item.character_id === character.id);
+  const characterNotes = state.notes.filter((note) => note.character_id === character.id);
+  const titles = {
+    notes: "Note personali",
+    inventory: "Inventario",
+    private: "Sussurri",
+    map: "Mappa",
+    sheet: "Scheda Eroe",
+    help: "Guida rapida"
+  };
+
+  return (
+    <div className={`player-utility-backdrop ${panel === "map" ? "player-utility-backdrop--fullscreen" : ""}`} role="dialog" aria-modal="true">
+      <section className={`player-utility-modal ${panel === "map" ? "player-utility-modal--fullscreen" : ""}`}>
+        <header>
+          <div>
+            <p className="player-modal-kicker">Strumento giocatore</p>
+            <h2>{titles[panel]}</h2>
+          </div>
+          <button
+            type="button"
+            onMouseEnter={() => {
+              import("@/lib/sound-generator").then((mod) => mod.playUiHover());
+            }}
+            onClick={() => {
+              import("@/lib/sound-generator").then((mod) => {
+                mod.playUiClick();
+                mod.playUiModalClose();
+              });
+              onClose();
+            }}
+            aria-label="Chiudi"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        {panel === "notes" ? (
+          <div className="grid gap-4">
+            <form
+              className="player-modal-compose grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!noteTitle.trim() && !noteContent.trim()) return;
+                onCreateNote({ title: noteTitle.trim() || "Nota", content: noteContent.trim() });
+                setNoteTitle("");
+                setNoteContent("");
+              }}
+            >
+              <input className="field px-3 py-2 text-sm" placeholder="Titolo nota" value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} />
+              <textarea className="field min-h-28 resize-none px-3 py-2 text-sm" placeholder="Scrivi una nota privata del tuo personaggio..." value={noteContent} onChange={(event) => setNoteContent(event.target.value)} />
+              <button
+                className="player-modal-primary"
+                onMouseEnter={() => {
+                  import("@/lib/sound-generator").then((mod) => mod.playUiHover());
+                }}
+                onClick={() => {
+                  import("@/lib/sound-generator").then((mod) => mod.playUiClick());
+                }}
+              >
+                <Plus size={16} /> Salva nota
+              </button>
+            </form>
+            <div className="player-modal-list grid gap-2">
+              {characterNotes.length ? characterNotes.map((note) => (
+                <article key={note.id} className="player-note-card">
+                  <p>{note.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-stone-300">{note.content}</p>
+                </article>
+              )) : <PlayerModalEmpty title="Nessuna nota salvata" text="Annota sospetti, indizi o obiettivi del tuo personaggio." />}
+            </div>
+          </div>
+        ) : null}
+
+        {panel === "inventory" ? (
+          <div className="player-modal-list grid gap-2">
+            {characterItems.length ? characterItems.map((item) => (
+              <article key={item.id} className="player-item-card">
+                <div className="flex items-start gap-3">
+                  {item.image_url ? <div className="player-item-thumb" style={{ backgroundImage: `url(${item.image_url})` }} /> : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p>{item.name} <span>x{item.quantity}</span></p>
+                      <span>{item.is_public ? "Pubblico" : "Privato"}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-stone-300">{item.description || "Nessuna descrizione."}</p>
+                    {item.player_notes ? <p className="mt-2 rounded-md bg-black/25 p-2 text-xs text-stone-400">{item.player_notes}</p> : null}
+                  </div>
+                </div>
+              </article>
+            )) : <PlayerModalEmpty title="Inventario vuoto" text="Gli oggetti assegnati dal Master appariranno qui." />}
+          </div>
+        ) : null}
+
+        {panel === "private" ? (
+          <PrivateThreadsPanel
+            profile={state.profile}
+            characters={state.characters}
+            messages={state.privateMessages}
+            masterId={state.campaigns[0].master_id}
+            isMaster={false}
+            onSend={onPrivateSend}
+          />
+        ) : null}
+
+        {panel === "map" ? <MapToolPanel state={state} isMaster={false} /> : null}
+
+        {panel === "sheet" ? (() => {
+          const meta = parseCharacterMetadata(character.public_background);
+          return (
+            <div className="grid gap-5">
+              {/* Tab Navigation */}
+              <div className="flex gap-2 border-b border-white/10 pb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    import("@/lib/sound-generator").then((mod) => mod.playUiClick());
+                    setSheetTab("dossier");
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold tracking-wider transition ${
+                    sheetTab === "dossier"
+                      ? "bg-brass/20 text-brass border border-brass/35"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <UserRound size={15} /> Dossier Eroe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    import("@/lib/sound-generator").then((mod) => mod.playUiClick());
+                    setSheetTab("help");
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold tracking-wider transition ${
+                    sheetTab === "help"
+                      ? "bg-brass/20 text-brass border border-brass/35"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <CircleHelp size={15} /> Guida di Gioco
+                </button>
+              </div>
+
+              {sheetTab === "dossier" ? (
+                <div className="grid gap-6 md:grid-cols-[14rem_1fr]">
+                  {/* Left Column: Portrait & Stats */}
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="relative h-44 w-44 overflow-hidden rounded-xl border-2 border-brass/40 bg-black/40 shadow-lg">
+                      {character.portrait_url ? (
+                        <div
+                          className="h-full w-full bg-cover bg-center"
+                          style={{ backgroundImage: `url(${character.portrait_url})` }}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-brass/50 bg-brass/5">
+                          <UserRound size={48} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="w-full">
+                      <h3 className="font-serif text-xl font-bold leading-tight" style={{ color: character.color }}>
+                        {character.character_name}
+                      </h3>
+                      <p className="text-sm font-serif text-slate-400">{character.character_surname}</p>
+                      <span className="mt-1 inline-block rounded border border-brass/20 bg-brass/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brass">
+                        {meta.archetype || "Nessun Archetipo"}
+                      </span>
+                    </div>
+
+                    {/* Vitals Box */}
+                    <div className="w-full rounded-lg border border-white/5 bg-white/[0.01] p-3 text-left space-y-2.5">
+                      <div>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-400">
+                          <span className="flex items-center gap-1"><Heart size={12} className="text-red-500" /> Punti Ferita</span>
+                          <span className="text-white">{character.hp} / 15</span>
+                        </div>
+                        <div className="mt-1.5 h-2 w-full overflow-hidden rounded bg-black/40 border border-white/5">
+                          <div
+                            className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-500"
+                            style={{ width: `${Math.min(100, (character.hp / 15) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/5 pt-2">
+                        <div>
+                          <span className="block text-[10px] uppercase text-stone-500 font-bold">Mente</span>
+                          <strong className="text-white font-medium">{character.mental_state || "n/d"}</strong>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] uppercase text-stone-500 font-bold">Religione</span>
+                          <strong className="text-white font-medium">{character.visible_status || "n/d"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Narrative Details */}
+                  <div className="space-y-4">
+                    {/* Origin & Alignment */}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                        <span className="block text-[10px] uppercase text-brass font-bold">Origine</span>
+                        <p className="mt-1 text-sm text-stone-200">{meta.origin || "n/d"}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                        <span className="block text-[10px] uppercase text-brass font-bold">Allineamento / Credo</span>
+                        <p className="mt-1 text-sm text-stone-200">{meta.alignment || "Neutrale"}</p>
+                      </div>
+                    </div>
+
+                    {/* Traits & Appearance */}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                        <span className="block text-[10px] uppercase text-brass font-bold">Tratti Speciali</span>
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {meta.traits.length > 0 ? (
+                            meta.traits.map((trait) => (
+                              <span key={trait} className="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-xs text-stone-300">
+                                {trait}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs italic text-stone-500">Nessun tratto speciale registrato</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                        <span className="block text-[10px] uppercase text-brass font-bold">Aspetto Fisico</span>
+                        <p className="mt-1 text-sm text-stone-200 italic">{meta.appearance || "Nessun dettaglio descritto."}</p>
+                      </div>
+                    </div>
+
+                    {/* Group Connection / Bond */}
+                    <div className="rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                      <span className="block text-[10px] uppercase text-brass font-bold">Connessione / Legame Narrativo</span>
+                      <p className="mt-1 text-sm text-stone-200">{meta.bond || "Nessun legame di gruppo specificato."}</p>
+                    </div>
+
+                    {/* Private Secret */}
+                    <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 shadow-[inset_0_0_12px_rgba(249,115,22,0.03)]">
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                        <Lock size={12} />
+                        <span>Segreto Privato (Solo tu e il Master)</span>
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed text-amber-200/90 italic">
+                        {meta.private_secret || "Nessun segreto registrato."}
+                      </p>
+                    </div>
+
+                    {/* Public Biography */}
+                    <div className="rounded-lg border border-white/5 bg-white/[0.01] p-4">
+                      <span className="block text-[10px] uppercase text-brass font-bold mb-2">Biografia Pubblica</span>
+                      <p className="text-sm leading-relaxed text-stone-300 whitespace-pre-line">
+                        {meta.bio || "Nessuna biografia inserita."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="player-help-grid">
+                  <article>
+                    <strong>Chat comune</strong>
+                    <p>Usala per giocare in scena. Invio pubblica, Shift+Invio va a capo.</p>
+                  </article>
+                  <article>
+                    <strong>Sussurri</strong>
+                    <p>Restano privati tra te e il Master, perfetti per indizi e visioni.</p>
+                  </article>
+                  <article>
+                    <strong>Audio locale</strong>
+                    <p>Volume e mute modificano solo il tuo ascolto, non quello degli altri.</p>
+                  </article>
+                </div>
+              )}
+            </div>
+          );
+        })() : null}
+
+        {panel === "help" ? (
+          <div className="player-help-grid">
+            <article>
+              <strong>Chat comune</strong>
+              <p>Usala per giocare in scena. Invio pubblica, Shift+Invio va a capo.</p>
+            </article>
+            <article>
+              <strong>Sussurri</strong>
+              <p>Restano privati tra te e il Master, perfetti per indizi e visioni.</p>
+            </article>
+            <article>
+              <strong>Audio locale</strong>
+              <p>Volume e mute modificano solo il tuo ascolto, non quello degli altri.</p>
+            </article>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function PlayerModalEmpty({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="player-modal-empty">
+      <p>{title}</p>
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function InfoTile({ label, value, copy = false }: { label: string; value: string; copy?: boolean }) {
+  return (
+    <div className="player-info-tile sm:col-span-2">
+      <p>{label}</p>
+      <strong>{value}</strong>
+      {copy ? <Copy size={14} /> : null}
+    </div>
+  );
+}
+
+function MobilePlayerTabs({ active, onChange }: { active: MobileTab; onChange: (tab: MobileTab) => void }) {
+  const items: Array<{ id: MobileTab; label: string; icon: React.ReactNode }> = [
+    { id: "chat", label: "Chat", icon: <MessageCircle size={15} /> },
+    { id: "map", label: "Mappa", icon: <MapPinned size={15} /> },
+    { id: "sheet", label: "Scheda", icon: <Backpack size={15} /> },
+    { id: "private", label: "Privati", icon: <BookOpenText size={15} /> },
+    { id: "off", label: "OFF", icon: <UsersRound size={15} /> }
+  ];
+
+  return (
+    <nav className="mobile-player-tabs glass-panel sticky top-2 z-20 grid grid-cols-5 gap-1 rounded-lg p-1 lg:hidden">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onChange(item.id)}
+          className={`inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs ${active === item.id ? "bg-ember-500 text-ink-900" : "text-slate-300"}`}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
