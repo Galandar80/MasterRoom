@@ -4,7 +4,7 @@
 import { Compass, Copy, Crosshair, DoorOpen, Expand, Eye, EyeOff, Flag, ImageUp, Map, MapPinned, Minus, Move, Plus, RotateCcw, Ruler, Search, Trash2, UsersRound } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Character, MapCharacterPosition, MapCustomMarker, MapHotspot, MapNpcMarker, NarrativeMap, Npc, RoomState } from "@/lib/types";
+import type { Character, MapCharacterPosition, MapCustomMarker, MapHotspot, MapNpcMarker, MapFogArea, NarrativeMap, Npc, RoomState } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 
 type MapToolPanelProps = {
@@ -15,6 +15,9 @@ type MapToolPanelProps = {
   onDeleteMap?: (map: NarrativeMap) => void | Promise<void>;
   onDuplicateMap?: (map: NarrativeMap) => void | Promise<void>;
   onUpdateCharacterPosition?: (position: MapCharacterPosition, values: { x: number; y: number; narrativeLocation: string; isVisibleToPlayers: boolean; isLocked: boolean }) => void | Promise<void>;
+  onCreateMapFogArea?: (values: { mapId: string; shapeType: "rect" | "circle" | "polygon"; shapeData: Record<string, any>; isRevealed: boolean }) => void | Promise<void>;
+  onUpdateMapFogArea?: (id: string, values: { shapeData: Record<string, any>; isRevealed: boolean }) => void | Promise<void>;
+  onDeleteMapFogArea?: (id: string) => void | Promise<void>;
 };
 
 type ViewTransform = {
@@ -41,7 +44,10 @@ export function MapToolPanel({
   onSetActiveMap,
   onDeleteMap,
   onDuplicateMap,
-  onUpdateCharacterPosition
+  onUpdateCharacterPosition,
+  onCreateMapFogArea,
+  onUpdateMapFogArea,
+  onDeleteMapFogArea
 }: MapToolPanelProps) {
   const visibleMaps = useMemo(
     () => (isMaster ? state.maps : state.maps.filter((map) => map.is_visible_to_players)),
@@ -167,10 +173,14 @@ export function MapToolPanel({
               characterPositions={characterPositions}
               npcMarkers={state.mapNpcMarkers.filter((marker) => marker.map_id === currentMap.id)}
               customMarkers={state.mapCustomMarkers.filter((marker) => marker.map_id === currentMap.id)}
+              fogAreas={state.mapFogAreas.filter((area) => area.map_id === currentMap.id)}
               isMaster={isMaster}
               currentUserId={state.profile.id}
               onOpenMap={(mapId) => setSelectedMapId(mapId)}
               onUpdateCharacterPosition={onUpdateCharacterPosition}
+              onCreateMapFogArea={onCreateMapFogArea}
+              onUpdateMapFogArea={onUpdateMapFogArea}
+              onDeleteMapFogArea={onDeleteMapFogArea}
             />
           ) : (
             <MapEmptyState title="Nessuna mappa disponibile" text={isMaster ? "Crea una mappa per iniziare a muovere la scena." : "Il Master non ha ancora condiviso una mappa."} />
@@ -364,10 +374,14 @@ function MapViewer({
   characterPositions,
   npcMarkers,
   customMarkers,
+  fogAreas,
   isMaster,
   currentUserId,
   onOpenMap,
-  onUpdateCharacterPosition
+  onUpdateCharacterPosition,
+  onCreateMapFogArea,
+  onUpdateMapFogArea,
+  onDeleteMapFogArea
 }: {
   map: NarrativeMap;
   maps: NarrativeMap[];
@@ -377,10 +391,14 @@ function MapViewer({
   characterPositions: MapCharacterPosition[];
   npcMarkers: MapNpcMarker[];
   customMarkers: MapCustomMarker[];
+  fogAreas: MapFogArea[];
   isMaster: boolean;
   currentUserId: string;
   onOpenMap: (mapId: string) => void;
   onUpdateCharacterPosition?: MapToolPanelProps["onUpdateCharacterPosition"];
+  onCreateMapFogArea?: MapToolPanelProps["onCreateMapFogArea"];
+  onUpdateMapFogArea?: MapToolPanelProps["onUpdateMapFogArea"];
+  onDeleteMapFogArea?: MapToolPanelProps["onDeleteMapFogArea"];
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -395,6 +413,20 @@ function MapViewer({
   const [isRulerActive, setIsRulerActive] = useState(false);
   const [rulerStart, setRulerStart] = useState<{ x: number; y: number } | null>(null);
   const [rulerEnd, setRulerEnd] = useState<{ x: number; y: number } | null>(null);
+
+  const [isFowModeActive, setIsFowModeActive] = useState(false);
+  const [localFogAreas, setLocalFogAreas] = useState<MapFogArea[]>([]);
+  const [draggingFogId, setDraggingFogId] = useState<string | null>(null);
+  const [draggingFogOffset, setDraggingFogOffset] = useState<{ x: number; y: number } | null>(null);
+  const [resizingFogId, setResizingFogId] = useState<string | null>(null);
+  const [resizingFogStartData, setResizingFogStartData] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [resizingPointerStart, setResizingPointerStart] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!draggingFogId && !resizingFogId) {
+      setLocalFogAreas(fogAreas);
+    }
+  }, [fogAreas, draggingFogId, resizingFogId]);
 
   function calculateRulerDistance(start: { x: number; y: number }, end: { x: number; y: number }) {
     const dx = end.x - start.x;
@@ -791,6 +823,37 @@ function MapViewer({
             )
           )}
 
+          {/* Attivazione Nebbia di Guerra (Solo Master) */}
+          {isMaster && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsFowModeActive((prev) => !prev)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs border rounded focus:outline-none ${isFowModeActive ? 'bg-violet-600/30 border-violet-500 text-violet-100 font-bold' : 'bg-stone-900 border-stone-700 text-stone-300'}`}
+                title={isFowModeActive ? "Disattiva Modalità Nebbia" : "Attiva Modalità Nebbia (Fog of War)"}
+              >
+                <EyeOff size={13} /> {isFowModeActive ? "Nebbia ON" : "Nebbia"}
+              </button>
+              {isFowModeActive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreateMapFogArea?.({
+                      mapId: map.id,
+                      shapeType: "rect",
+                      shapeData: { x: 25, y: 25, w: 20, h: 20 },
+                      isRevealed: false
+                    });
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-xs border rounded bg-stone-900 border-stone-700 text-stone-300 hover:bg-stone-850"
+                  title="Aggiungi area nebbia coprente"
+                >
+                  <Plus size={13} /> Area Nebbia
+                </button>
+              )}
+            </>
+          )}
+
           {/* Attivazione Righello */}
           <button
             type="button"
@@ -987,6 +1050,190 @@ function MapViewer({
               <MapPinned size={17} />
             </span>
           ))}
+
+          {/* Fog of War Layers */}
+          {(!isMaster ? localFogAreas.filter((area) => !area.is_revealed) : localFogAreas).map((area) => {
+            const shape = area.shape_data as { x: number; y: number; w: number; h: number };
+            if (!shape || typeof shape.x !== "number") return null;
+
+            if (!isMaster) {
+              // Player view: solid black covers
+              return (
+                <div
+                  key={area.id}
+                  style={{
+                    position: "absolute",
+                    left: `${shape.x}%`,
+                    top: `${shape.y}%`,
+                    width: `${shape.w}%`,
+                    height: `${shape.h}%`,
+                    zIndex: 29
+                  }}
+                  className="bg-black select-none pointer-events-auto rounded-[2px] shadow-lg flex items-center justify-center border border-black"
+                  title="Zona d'Ombra (Nebbia di Guerra)"
+                >
+                  <EyeOff size={18} className="text-stone-800 opacity-20" />
+                </div>
+              );
+            }
+
+            // Master view
+            const isRevealed = area.is_revealed;
+            return (
+              <div
+                key={area.id}
+                style={{
+                  position: "absolute",
+                  left: `${shape.x}%`,
+                  top: `${shape.y}%`,
+                  width: `${shape.w}%`,
+                  height: `${shape.h}%`,
+                  zIndex: 29,
+                  cursor: isFowModeActive ? "move" : "default"
+                }}
+                className={`relative select-none pointer-events-auto rounded-[2px] flex items-center justify-center transition-colors duration-200 ${
+                  isFowModeActive
+                    ? isRevealed
+                      ? "border border-dashed border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      : "border border-dashed border-violet-500/60 bg-black/60 hover:bg-black/70"
+                    : isRevealed
+                      ? "hidden" // Master hides completely if revealed and edit mode is OFF
+                      : "border border-dashed border-red-500/30 bg-black/40" // Simple overlay when FOW mode is OFF
+                }`}
+                onPointerDown={(event) => {
+                  if (!isFowModeActive) return;
+                  event.stopPropagation();
+                  const coords = pointerToMap(event);
+                  setDraggingFogId(area.id);
+                  setDraggingFogOffset({ x: coords.x - shape.x, y: coords.y - shape.y });
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (draggingFogId !== area.id || !draggingFogOffset) return;
+                  event.stopPropagation();
+                  const coords = pointerToMap(event);
+                  const nextX = clamp(coords.x - draggingFogOffset.x, 0, 100 - shape.w);
+                  const nextY = clamp(coords.y - draggingFogOffset.y, 0, 100 - shape.h);
+                  
+                  setLocalFogAreas((current) =>
+                    current.map((item) =>
+                      item.id === area.id
+                        ? { ...item, shape_data: { ...shape, x: nextX, y: nextY } }
+                        : item
+                    )
+                  );
+                }}
+                onPointerUp={(event) => {
+                  if (draggingFogId !== area.id) return;
+                  event.stopPropagation();
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                  
+                  const currentShape = localFogAreas.find((item) => item.id === area.id)?.shape_data as { x: number; y: number; w: number; h: number };
+                  if (currentShape) {
+                    onUpdateMapFogArea?.(area.id, {
+                      shapeData: currentShape,
+                      isRevealed: area.is_revealed
+                    });
+                  }
+                  
+                  setDraggingFogId(null);
+                  setDraggingFogOffset(null);
+                }}
+              >
+                {/* HUD controls for Master when FOW Mode is active */}
+                {isFowModeActive && (
+                  <div 
+                    className="absolute top-1 left-1 flex items-center gap-1 bg-stone-950/90 border border-stone-800 rounded px-1 py-0.5 pointer-events-auto"
+                    onPointerDown={(e) => e.stopPropagation()} // Prevent dragging when clicking buttons
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateMapFogArea?.(area.id, {
+                          shapeData: shape,
+                          isRevealed: !isRevealed
+                        });
+                      }}
+                      className={`p-1 rounded transition hover:bg-stone-800 ${
+                        isRevealed ? "text-emerald-400" : "text-stone-400"
+                      }`}
+                      title={isRevealed ? "Copri con la nebbia" : "Rivela zona ai giocatori"}
+                    >
+                      {isRevealed ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm("Eliminare questa area di nebbia?")) {
+                          onDeleteMapFogArea?.(area.id);
+                        }
+                      }}
+                      className="p-1 rounded text-red-400 hover:bg-stone-800"
+                      title="Elimina area"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Resize Handle when FOW Mode is active */}
+                {isFowModeActive && (
+                  <div
+                    style={{ cursor: "se-resize" }}
+                    className="absolute bottom-0 right-0 w-3 h-3 bg-violet-500 border-l border-t border-stone-900 rounded-tl pointer-events-auto font-bold flex items-center justify-center text-[8px]"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      const coords = pointerToMap(event);
+                      setResizingFogId(area.id);
+                      setResizingFogStartData(shape);
+                      setResizingPointerStart({ x: coords.x, y: coords.y });
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      if (resizingFogId !== area.id || !resizingFogStartData || !resizingPointerStart) return;
+                      event.stopPropagation();
+                      const coords = pointerToMap(event);
+                      const dx = coords.x - resizingPointerStart.x;
+                      const dy = coords.y - resizingPointerStart.y;
+                      const nextW = clamp(resizingFogStartData.w + dx, 2, 100 - resizingFogStartData.x);
+                      const nextH = clamp(resizingFogStartData.h + dy, 2, 100 - resizingFogStartData.y);
+                      
+                      setLocalFogAreas((current) =>
+                        current.map((item) =>
+                          item.id === area.id
+                            ? { ...item, shape_data: { ...resizingFogStartData, w: nextW, h: nextH } }
+                            : item
+                        )
+                      );
+                    }}
+                    onPointerUp={(event) => {
+                      if (resizingFogId !== area.id) return;
+                      event.stopPropagation();
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                      
+                      const currentShape = localFogAreas.find((item) => item.id === area.id)?.shape_data as { x: number; y: number; w: number; h: number };
+                      if (currentShape) {
+                        onUpdateMapFogArea?.(area.id, {
+                          shapeData: currentShape,
+                          isRevealed: area.is_revealed
+                        });
+                      }
+                      
+                      setResizingFogId(null);
+                      setResizingFogStartData(null);
+                      setResizingPointerStart(null);
+                    }}
+                  />
+                )}
+
+                {/* Status Indicator text overlay */}
+                <span className="text-[10px] text-stone-400 font-bold select-none pointer-events-none opacity-40">
+                  {isRevealed ? "Rivelato" : "Nebbia"}
+                </span>
+              </div>
+            );
+          })}
+
 
           {/* Overlay di Ping in tempo reale */}
           {pings.map((p) => (

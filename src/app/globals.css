@@ -1661,10 +1661,32 @@ button:active {
   color: rgb(214, 211, 209);
 }
 
+.director-danger-action {
+  display: inline-flex;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  background: rgba(220, 38, 38, 0.13);
+  color: #fca5a5;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
 .director-primary-action:hover,
 .director-save-action:hover,
-.director-secondary-action:hover {
+.director-secondary-action:hover,
+.director-danger-action:hover {
   transform: translateY(-1px);
+}
+
+.director-danger-action:hover {
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(220, 38, 38, 0.22);
 }
 
 .director-danger-icon {

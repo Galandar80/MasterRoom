@@ -57,16 +57,21 @@ import {
   updateCurrentAudio,
   updateCurrentScene,
   updateCharacterByMaster,
+  updateScene,
+  deletePlayerCharacter,
   updateRoomChatPermissions,
   updateRoomSpotlight,
   updateMessageContent,
   updateMessagePinned,
   upsertMapCharacterPosition,
   updateRoomBySuperAdmin,
-  uploadPublicFile
+  uploadPublicFile,
+  createMapFogArea,
+  updateMapFogArea,
+  deleteMapFogArea
 } from "@/lib/supabase/room-service";
 import type { AdminMediaOverview, AdminRoomOverview } from "@/lib/supabase/room-service";
-import type { AudioTrack, DiceRequest, InventoryItem, MapCharacterPosition, MediaAsset, Message, NarrativeMap, Npc, Room, RoomState, Scene, SceneMediaType, SceneVisibility, SoundEffect } from "@/lib/types";
+import type { AudioTrack, DiceRequest, InventoryItem, MapCharacterPosition, MapFogArea, MediaAsset, Message, NarrativeMap, Npc, Room, RoomState, Scene, SceneMediaType, SceneVisibility, SoundEffect } from "@/lib/types";
 
 type View = "menu" | "create" | "join" | "character" | "player" | "master" | "superadmin";
 type CinematicEvent =
@@ -85,6 +90,7 @@ type MapSyncPayload = {
   revision: string;
   maps: NarrativeMap[];
   mapCharacterPositions: MapCharacterPosition[];
+  mapFogAreas?: MapFogArea[];
 };
 
 const MAP_SYNC_PREFIX = "__gdr_map_sync__:";
@@ -962,6 +968,99 @@ export function AppShell() {
     }
   }
 
+  async function updateMasterScene(
+    sceneId: string,
+    values: {
+      title: string;
+      description: string;
+      imageUrl: string;
+      imageFile?: File;
+      mediaType?: SceneMediaType;
+      videoUrl?: string;
+      videoFile?: File;
+      loopVideo?: boolean;
+      visibility?: SceneVisibility;
+      visibleUserIds?: string[];
+      linkedAudioId?: string | null;
+    }
+  ) {
+    if (!isCurrentMaster) return;
+
+    try {
+      setError("");
+      let imageUrl = values.imageUrl;
+      let videoUrl = values.videoUrl ?? "";
+      if (supabase && !demoMode) {
+        if (values.imageFile) {
+          imageUrl = await uploadPublicFile(supabase, "scene-images", values.imageFile, `rooms/${roomState.room.id}/scenes`);
+        }
+        if (values.videoFile) {
+          videoUrl = await uploadPublicFile(supabase, "scene-images", values.videoFile, `rooms/${roomState.room.id}/scene-videos`);
+        }
+        if (values.mediaType === "video" && !imageUrl) {
+          imageUrl = videoUrl;
+        }
+        const updatedScene = await updateScene(supabase, sceneId, { ...values, imageUrl, videoUrl });
+        const sceneAssetUrl = updatedScene.media_type === "video" ? updatedScene.video_url || updatedScene.image_url : updatedScene.image_url;
+        if (sceneAssetUrl) {
+          const asset = await createMediaAsset(supabase, roomState.room.id, roomState.profile, {
+            title: updatedScene.title,
+            assetType: updatedScene.media_type === "video" ? "video" : "image",
+            url: sceneAssetUrl,
+            tags: ["scena"]
+          });
+          setRoomState((state) => ({ ...state, mediaAssets: [asset, ...state.mediaAssets.filter((item) => item.id !== asset.id)] }));
+        }
+
+        const isActiveScene = roomState.room.current_scene_id === sceneId;
+        if (isActiveScene && updatedScene.linked_audio_id && updatedScene.linked_audio_id !== roomState.room.current_audio_id) {
+          await updateCurrentScene(supabase, roomState.room.id, updatedScene.id, updatedScene.linked_audio_id);
+        }
+
+        setRoomState((state) => {
+          const updatedScenes = state.scenes.map((s) => (s.id === sceneId ? updatedScene : s));
+          return {
+            ...state,
+            scene: state.scene.id === sceneId ? updatedScene : state.scene,
+            scenes: updatedScenes,
+            room: isActiveScene
+              ? {
+                  ...state.room,
+                  current_audio_id: updatedScene.linked_audio_id || state.room.current_audio_id
+                }
+              : state.room
+          };
+        });
+      } else {
+        setRoomState((state) => {
+          const mockScene: Scene = {
+            id: sceneId,
+            room_id: state.room.id,
+            title: values.title,
+            description: values.description,
+            image_url: imageUrl,
+            media_type: values.mediaType ?? "image",
+            video_url: videoUrl || null,
+            loop_video: values.loopVideo ?? true,
+            visibility: values.visibility ?? "public",
+            visible_user_ids: values.visibleUserIds ?? [],
+            linked_audio_id: values.linkedAudioId || null,
+            created_at: state.scenes.find((s) => s.id === sceneId)?.created_at ?? new Date().toISOString(),
+            created_by: state.profile.id
+          };
+          return {
+            ...state,
+            scene: state.scene.id === sceneId ? mockScene : state.scene,
+            scenes: state.scenes.map((s) => (s.id === sceneId ? mockScene : s))
+          };
+        });
+      }
+      setStatus("Scena modificata");
+    } catch (sceneError) {
+      setError(readError(sceneError));
+    }
+  }
+
   async function removeMasterScene(scene: Scene) {
     if (!isCurrentMaster) return;
 
@@ -1347,6 +1446,24 @@ export function AppShell() {
     }
   }
 
+  async function kickPlayerCharacter(characterId: string) {
+    if (!isCurrentMaster) return;
+
+    try {
+      setError("");
+      if (supabase && !demoMode) {
+        await deletePlayerCharacter(supabase, characterId);
+      }
+      setRoomState((state) => ({
+        ...state,
+        characters: state.characters.filter((c) => c.id !== characterId)
+      }));
+      setStatus("Giocatore rimosso dalla sessione");
+    } catch (err) {
+      setError(readError(err));
+    }
+  }
+
   async function requestDice(values: { diceCount?: number; diceSides: number; reason: string; targetUserId?: string | null; visibility: "public" | "private" }) {
     if (!isCurrentMaster) return;
 
@@ -1660,6 +1777,128 @@ export function AppShell() {
     }
   }
 
+  async function createFogArea(values: { mapId: string; shapeType: "rect" | "circle" | "polygon"; shapeData: Record<string, any>; isRevealed: boolean }) {
+    if (!isCurrentMaster) return;
+
+    const tempId = `temp-fog-${crypto.randomUUID()}`;
+    const tempArea: MapFogArea = {
+      id: tempId,
+      map_id: values.mapId,
+      shape_type: values.shapeType,
+      shape_data: values.shapeData,
+      is_revealed: values.isRevealed,
+      created_at: new Date().toISOString()
+    };
+
+    const nextState = { ...roomState, mapFogAreas: [...roomState.mapFogAreas, tempArea] };
+    setRoomState(nextState);
+
+    try {
+      if (supabase && !demoMode && !mapSchemaUnavailableRef.current) {
+        const created = await createMapFogArea(supabase, values.mapId, values);
+        const updatedState = {
+          ...roomState,
+          mapFogAreas: [...roomState.mapFogAreas.filter((item) => item.id !== tempId), created]
+        };
+        setRoomState(updatedState);
+        await broadcastMapSync(updatedState);
+      } else {
+        await broadcastMapSync(nextState);
+      }
+      setStatus("Area nebbia creata");
+    } catch (mapError) {
+      if (isMapSchemaError(mapError)) {
+        mapSchemaUnavailableRef.current = true;
+        await broadcastMapSync(nextState);
+        setStatus("Area nebbia sincronizzata tramite chat tecnica");
+        setError("");
+        return;
+      }
+      setError(readError(mapError));
+      setRoomState((state) => ({ ...state, mapFogAreas: state.mapFogAreas.filter((item) => item.id !== tempId) }));
+    }
+  }
+
+  async function updateFogArea(id: string, values: { shapeData: Record<string, any>; isRevealed: boolean }) {
+    if (!isCurrentMaster) return;
+
+    const originalArea = roomState.mapFogAreas.find((item) => item.id === id);
+    if (!originalArea) return;
+
+    const updatedArea: MapFogArea = {
+      ...originalArea,
+      shape_data: values.shapeData,
+      is_revealed: values.isRevealed,
+      updated_at: new Date().toISOString()
+    };
+
+    const nextState = {
+      ...roomState,
+      mapFogAreas: roomState.mapFogAreas.map((item) => (item.id === id ? updatedArea : item))
+    };
+    setRoomState(nextState);
+
+    try {
+      if (supabase && !demoMode && !mapSchemaUnavailableRef.current && !id.startsWith("temp-fog-")) {
+        const updated = await updateMapFogArea(supabase, id, values);
+        const updatedState = {
+          ...roomState,
+          mapFogAreas: roomState.mapFogAreas.map((item) => (item.id === id ? updated : item))
+        };
+        setRoomState(updatedState);
+        await broadcastMapSync(updatedState);
+      } else {
+        await broadcastMapSync(nextState);
+      }
+      setStatus("Area nebbia aggiornata");
+    } catch (mapError) {
+      if (isMapSchemaError(mapError)) {
+        mapSchemaUnavailableRef.current = true;
+        await broadcastMapSync(nextState);
+        setStatus("Area nebbia sincronizzata tramite chat tecnica");
+        setError("");
+        return;
+      }
+      setError(readError(mapError));
+      setRoomState((state) => ({
+        ...state,
+        mapFogAreas: state.mapFogAreas.map((item) => (item.id === id ? originalArea : item))
+      }));
+    }
+  }
+
+  async function deleteFogArea(id: string) {
+    if (!isCurrentMaster) return;
+
+    const originalArea = roomState.mapFogAreas.find((item) => item.id === id);
+    if (!originalArea) return;
+
+    const nextState = {
+      ...roomState,
+      mapFogAreas: roomState.mapFogAreas.filter((item) => item.id !== id)
+    };
+    setRoomState(nextState);
+
+    try {
+      if (supabase && !demoMode && !mapSchemaUnavailableRef.current && !id.startsWith("temp-fog-")) {
+        await deleteMapFogArea(supabase, id);
+      }
+      await broadcastMapSync(nextState);
+      setStatus("Area nebbia rimossa");
+    } catch (mapError) {
+      if (isMapSchemaError(mapError)) {
+        mapSchemaUnavailableRef.current = true;
+        await broadcastMapSync(nextState);
+        setStatus("Area nebbia rimossa tramite chat tecnica");
+        setError("");
+        return;
+      }
+      setError(readError(mapError));
+      setRoomState((state) => ({ ...state, mapFogAreas: [...state.mapFogAreas, originalArea] }));
+    }
+  }
+
+
   async function saveRoom() {
     setError("");
     setStatus("Stanza salvata sul database");
@@ -1970,6 +2209,7 @@ export function AppShell() {
           onSceneChange={changeScene}
           onAudioChange={changeAudio}
           onCreateScene={createMasterScene}
+          onUpdateScene={updateMasterScene}
           onDeleteScene={removeMasterScene}
           onCreateAudio={createMasterAudio}
           onDeleteAudio={removeMasterAudio}
@@ -1986,6 +2226,7 @@ export function AppShell() {
           onDrawCard={drawNarrativeCard}
           onUpdateSpotlight={saveSpotlight}
           onUpdateCharacter={saveCharacterByMaster}
+          onDeleteCharacter={kickPlayerCharacter}
           onCreateMediaAsset={addMediaAsset}
           onDeleteMediaAsset={removeMediaAsset}
           onCreateMap={createMap}
@@ -1993,6 +2234,9 @@ export function AppShell() {
           onDeleteMap={deleteMap}
           onDuplicateMap={duplicateMap}
           onUpdateMapCharacterPosition={updateMapCharacterPosition}
+          onCreateMapFogArea={createFogArea}
+          onUpdateMapFogArea={updateFogArea}
+          onDeleteMapFogArea={deleteFogArea}
           onLoadOlderMessages={loadOlderMessages}
           onExportMessages={loadFullChatForExport}
           onQuickCue={broadcastDirectorCue}
@@ -2172,12 +2416,15 @@ function buildMapSyncPayload(state: RoomState): MapSyncPayload {
       }))
   );
 
+  const syncedFogAreas = state.mapFogAreas.filter((area) => visibleMapIds.has(area.map_id));
+
   return {
     kind: "map-sync",
     roomId: state.room.id,
     revision: new Date().toISOString(),
     maps: visibleMaps,
-    mapCharacterPositions: [...syncedPositions, ...fallbackPositions]
+    mapCharacterPositions: [...syncedPositions, ...fallbackPositions],
+    mapFogAreas: syncedFogAreas
   };
 }
 
@@ -2192,7 +2439,8 @@ function parseMapSyncMessage(message: Message): MapSyncPayload | null {
       roomId: payload.roomId,
       revision: payload.revision,
       maps: Array.isArray(payload.maps) ? (payload.maps as NarrativeMap[]) : [],
-      mapCharacterPositions: Array.isArray(payload.mapCharacterPositions) ? (payload.mapCharacterPositions as MapCharacterPosition[]) : []
+      mapCharacterPositions: Array.isArray(payload.mapCharacterPositions) ? (payload.mapCharacterPositions as MapCharacterPosition[]) : [],
+      mapFogAreas: Array.isArray(payload.mapFogAreas) ? (payload.mapFogAreas as MapFogArea[]) : []
     };
   } catch {
     return null;
@@ -2217,9 +2465,14 @@ function applyMapSyncState(state: RoomState, payload: MapSyncPayload): RoomState
       ...payload.mapCharacterPositions,
       ...state.mapCharacterPositions.filter((position) => !syncedMapIds.has(position.map_id))
     ],
+    mapFogAreas: [
+      ...(payload.mapFogAreas ?? []),
+      ...state.mapFogAreas.filter((area) => !syncedMapIds.has(area.map_id))
+    ],
     room: activeSyncedMap ? { ...state.room } : state.room
   };
 }
+
 
 function generateInviteCode(title: string) {
   const prefix = title

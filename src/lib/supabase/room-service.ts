@@ -767,6 +767,44 @@ export async function createScene(
   return data as Scene;
 }
 
+export async function updateScene(
+  supabase: DatabaseClient,
+  sceneId: string,
+  values: {
+    title: string;
+    description: string;
+    imageUrl: string;
+    mediaType?: "image" | "video";
+    videoUrl?: string;
+    loopVideo?: boolean;
+    visibility?: "public" | "private";
+    visibleUserIds?: string[];
+    linkedAudioId?: string | null;
+  }
+) {
+  const updatePayload: Record<string, unknown> = {
+    title: values.title,
+    description: values.description,
+    image_url: values.imageUrl,
+    media_type: values.mediaType ?? "image",
+    video_url: values.videoUrl || null,
+    loop_video: values.loopVideo ?? true,
+    visibility: values.visibility ?? "public",
+    visible_user_ids: values.visibleUserIds ?? [],
+    linked_audio_id: values.linkedAudioId || null
+  };
+
+  const { data, error } = await supabase
+    .from("scenes")
+    .update(updatePayload)
+    .eq("id", sceneId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as Scene;
+}
+
 export async function createNarrativeMap(
   supabase: DatabaseClient,
   room: Room,
@@ -868,6 +906,52 @@ export async function upsertMapCharacterPosition(
   if (error) throw error;
   return data as MapCharacterPosition;
 }
+
+export async function createMapFogArea(
+  supabase: DatabaseClient,
+  mapId: string,
+  values: { shapeType: "rect" | "circle" | "polygon"; shapeData: Record<string, any>; isRevealed: boolean }
+) {
+  const { data, error } = await supabase
+    .from("map_fog_areas")
+    .insert({
+      map_id: mapId,
+      shape_type: values.shapeType,
+      shape_data: values.shapeData,
+      is_revealed: values.isRevealed
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as MapFogArea;
+}
+
+export async function updateMapFogArea(
+  supabase: DatabaseClient,
+  id: string,
+  values: { shapeData: Record<string, any>; isRevealed: boolean }
+) {
+  const { data, error } = await supabase
+    .from("map_fog_areas")
+    .update({
+      shape_data: values.shapeData,
+      is_revealed: values.isRevealed,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as MapFogArea;
+}
+
+export async function deleteMapFogArea(supabase: DatabaseClient, id: string) {
+  const { error } = await supabase.from("map_fog_areas").delete().eq("id", id);
+  if (error) throw error;
+}
+
 
 export async function createSoundEffect(
   supabase: DatabaseClient,
@@ -1216,6 +1300,11 @@ export async function updateCharacterByMaster(
 
   if (error) throw error;
   return data as Character;
+}
+
+export async function deletePlayerCharacter(supabase: DatabaseClient, characterId: string) {
+  const { error } = await supabase.from("player_characters").delete().eq("id", characterId);
+  if (error) throw error;
 }
 
 async function removePublicFileFromUrl(supabase: DatabaseClient, bucket: string, publicUrl: string) {

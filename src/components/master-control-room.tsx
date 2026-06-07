@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowLeft, AudioLines, Bell, ChevronDown, ChevronUp, Eye, Film, ImageUp, Library, MapPinned, MessageSquareText, Plus, Radio, Save, ScrollText, Send, Shield, Sparkles, Square, Trash2, UsersRound, Volume2, X } from "lucide-react";
+import { Activity, ArrowLeft, AudioLines, Bell, ChevronDown, ChevronUp, Eye, Film, ImageUp, Library, MapPinned, MessageSquareText, Pencil, Plus, Radio, Save, ScrollText, Send, Shield, Sparkles, Square, Trash2, UsersRound, Volume2, X } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import type { AudioTrack, InventoryItem, MapCharacterPosition, MediaAsset, Message, NarrativeMap, Npc, RoomState, Scene, SceneMediaType, SceneVisibility, SoundEffect } from "@/lib/types";
@@ -45,6 +45,22 @@ type MasterControlRoomProps = {
     visibleUserIds?: string[];
     linkedAudioId?: string | null;
   }) => void | Promise<void>;
+  onUpdateScene: (
+    sceneId: string,
+    values: {
+      title: string;
+      description: string;
+      imageUrl: string;
+      imageFile?: File;
+      mediaType?: SceneMediaType;
+      videoUrl?: string;
+      videoFile?: File;
+      loopVideo?: boolean;
+      visibility?: SceneVisibility;
+      visibleUserIds?: string[];
+      linkedAudioId?: string | null;
+    }
+  ) => void | Promise<void>;
   onDeleteScene: (scene: Scene) => void | Promise<void>;
   onCreateAudio: (values: { title: string; audioUrl: string; loop: boolean; audioFile?: File }) => void | Promise<void>;
   onDeleteAudio: (track: AudioTrack) => void | Promise<void>;
@@ -64,6 +80,7 @@ type MasterControlRoomProps = {
     characterId: string,
     values: { characterName: string; characterSurname: string; portraitUrl: string; portraitFile?: File; color: string; hp: number; mentalState: string; visibleStatus: string; publicBackground: string; conditions: string }
   ) => void | Promise<void>;
+  onDeleteCharacter: (characterId: string) => void | Promise<void>;
   onCreateMediaAsset: (values: { title: string; assetType: MediaAsset["asset_type"]; url: string; tags: string[]; file?: File }) => void | Promise<void>;
   onDeleteMediaAsset: (asset: MediaAsset) => void | Promise<void>;
   onCreateMap: (values: { title: string; description: string; imageUrl: string; imageFile?: File; parentMapId?: string | null; levelType: NarrativeMap["level_type"]; isVisibleToPlayers: boolean }) => void | Promise<void>;
@@ -71,6 +88,9 @@ type MasterControlRoomProps = {
   onDeleteMap: (map: NarrativeMap) => void | Promise<void>;
   onDuplicateMap: (map: NarrativeMap) => void | Promise<void>;
   onUpdateMapCharacterPosition: (position: MapCharacterPosition, values: { x: number; y: number; narrativeLocation: string; isVisibleToPlayers: boolean; isLocked: boolean }) => void | Promise<void>;
+  onCreateMapFogArea: (values: { mapId: string; shapeType: "rect" | "circle" | "polygon"; shapeData: Record<string, any>; isRevealed: boolean }) => void | Promise<void>;
+  onUpdateMapFogArea: (id: string, values: { shapeData: Record<string, any>; isRevealed: boolean }) => void | Promise<void>;
+  onDeleteMapFogArea: (id: string) => void | Promise<void>;
   onLoadOlderMessages: () => void;
   onExportMessages: () => Promise<Message[]>;
   onQuickCue: (cueId: string, tone: string, message: string) => void | Promise<void>;
@@ -98,6 +118,7 @@ export function MasterControlRoom({
   onSceneChange,
   onAudioChange,
   onCreateScene,
+  onUpdateScene,
   onDeleteScene,
   onCreateAudio,
   onDeleteAudio,
@@ -114,6 +135,7 @@ export function MasterControlRoom({
   onDrawCard,
   onUpdateSpotlight,
   onUpdateCharacter,
+  onDeleteCharacter,
   onCreateMediaAsset,
   onDeleteMediaAsset,
   onCreateMap,
@@ -121,6 +143,9 @@ export function MasterControlRoom({
   onDeleteMap,
   onDuplicateMap,
   onUpdateMapCharacterPosition,
+  onCreateMapFogArea,
+  onUpdateMapFogArea,
+  onDeleteMapFogArea,
   onLoadOlderMessages,
   onExportMessages,
   onQuickCue,
@@ -247,7 +272,13 @@ export function MasterControlRoom({
           ) : null}
 
           {activeTool === "scenes" ? (
-            <SceneManager state={state} onSceneChange={onSceneChange} onCreateScene={onCreateScene} onDeleteScene={onDeleteScene} />
+            <SceneManager
+              state={state}
+              onSceneChange={onSceneChange}
+              onCreateScene={onCreateScene}
+              onUpdateScene={onUpdateScene}
+              onDeleteScene={onDeleteScene}
+            />
           ) : null}
 
           {activeTool === "map" ? (
@@ -259,6 +290,9 @@ export function MasterControlRoom({
               onDeleteMap={onDeleteMap}
               onDuplicateMap={onDuplicateMap}
               onUpdateCharacterPosition={onUpdateMapCharacterPosition}
+              onCreateMapFogArea={onCreateMapFogArea}
+              onUpdateMapFogArea={onUpdateMapFogArea}
+              onDeleteMapFogArea={onDeleteMapFogArea}
             />
           ) : null}
 
@@ -318,7 +352,13 @@ export function MasterControlRoom({
             </div>
           ) : null}
 
-          {activeTool === "players" ? <PlayersManager state={state} onUpdateCharacter={onUpdateCharacter} /> : null}
+          {activeTool === "players" ? (
+            <PlayersManager
+              state={state}
+              onUpdateCharacter={onUpdateCharacter}
+              onDeleteCharacter={onDeleteCharacter}
+            />
+          ) : null}
 
           {activeTool === "audio" ? (
             <AudioManager
@@ -1305,6 +1345,7 @@ function SceneManager({
   state,
   onSceneChange,
   onCreateScene,
+  onUpdateScene,
   onDeleteScene
 }: {
   state: RoomState;
@@ -1322,8 +1363,25 @@ function SceneManager({
     visibleUserIds?: string[];
     linkedAudioId?: string | null;
   }) => void | Promise<void>;
+  onUpdateScene: (
+    sceneId: string,
+    values: {
+      title: string;
+      description: string;
+      imageUrl: string;
+      imageFile?: File;
+      mediaType?: SceneMediaType;
+      videoUrl?: string;
+      videoFile?: File;
+      loopVideo?: boolean;
+      visibility?: SceneVisibility;
+      visibleUserIds?: string[];
+      linkedAudioId?: string | null;
+    }
+  ) => void | Promise<void>;
   onDeleteScene: (scene: Scene) => void | Promise<void>;
 }) {
+  const [editingScene, setEditingScene] = useState<Scene | null>(null);
   const [title, setTitle] = useState("");
   const [mediaType, setMediaType] = useState<SceneMediaType>("image");
   const [imageUrl, setImageUrl] = useState("");
@@ -1338,6 +1396,36 @@ function SceneManager({
 
   function toggleVisibleUser(userId: string) {
     setVisibleUserIds((ids) => (ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId]));
+  }
+
+  function startEditing(scene: Scene) {
+    setEditingScene(scene);
+    setTitle(scene.title);
+    setMediaType(scene.media_type || "image");
+    setImageUrl(scene.image_url ?? "");
+    setVideoUrl(scene.video_url ?? "");
+    setImageFile(undefined);
+    setVideoFile(undefined);
+    setLoopVideo(scene.loop_video ?? true);
+    setVisibility(scene.visibility ?? "public");
+    setVisibleUserIds(scene.visible_user_ids ?? []);
+    setLinkedAudioId(scene.linked_audio_id ?? "");
+    setDescription(scene.description ?? "");
+  }
+
+  function cancelEditing() {
+    setEditingScene(null);
+    setTitle("");
+    setMediaType("image");
+    setImageUrl("");
+    setVideoUrl("");
+    setImageFile(undefined);
+    setVideoFile(undefined);
+    setLoopVideo(true);
+    setVisibility("public");
+    setVisibleUserIds([]);
+    setLinkedAudioId("");
+    setDescription("");
   }
 
   return (
@@ -1367,15 +1455,31 @@ function SceneManager({
                 ) : null}
                 {scene.id === state.scene.id ? <span className="director-live-chip mt-2">In scena ora</span> : null}
               </button>
-              <button
-                type="button"
-                onClick={() => onDeleteScene(scene)}
-                className="director-danger-icon"
-                title={`Elimina scena ${scene.title}`}
-                aria-label={`Elimina scena ${scene.title}`}
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => startEditing(scene)}
+                  className="flex h-10 w-10 items-center justify-center border border-brass/35 bg-brass/10 text-brass hover:bg-brass/20 rounded-lg transition-colors"
+                  title={`Modifica scena ${scene.title}`}
+                  aria-label={`Modifica scena ${scene.title}`}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingScene?.id === scene.id) {
+                      cancelEditing();
+                    }
+                    onDeleteScene(scene);
+                  }}
+                  className="director-danger-icon"
+                  title={`Elimina scena ${scene.title}`}
+                  aria-label={`Elimina scena ${scene.title}`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </article>
           ))}
           {!state.scenes.length ? <DirectorEmptyState title="Nessuna scena preparata" text="Crea la prima scena per iniziare a costruire il palcoscenico della sessione." /> : null}
@@ -1385,7 +1489,7 @@ function SceneManager({
           onSubmit={(event) => {
             event.preventDefault();
             if (!title.trim()) return;
-            onCreateScene({
+            const values = {
               title: title.trim(),
               imageUrl: imageUrl.trim(),
               imageFile,
@@ -1397,20 +1501,16 @@ function SceneManager({
               visibility,
               visibleUserIds: visibility === "private" ? visibleUserIds : [],
               linkedAudioId: linkedAudioId || null
-            });
-            setTitle("");
-            setImageUrl("");
-            setVideoUrl("");
-            setImageFile(undefined);
-            setVideoFile(undefined);
-            setLoopVideo(true);
-            setVisibility("public");
-            setVisibleUserIds([]);
-            setLinkedAudioId("");
-            setDescription("");
+            };
+            if (editingScene) {
+              onUpdateScene(editingScene.id, values);
+            } else {
+              onCreateScene(values);
+            }
+            cancelEditing();
           }}
         >
-          <p className="director-form-title">Nuova scena</p>
+          <p className="director-form-title">{editingScene ? `Modifica scena` : "Nuova scena"}</p>
           <input className="field px-3 py-2 text-sm" placeholder="Titolo scena" value={title} onChange={(event) => setTitle(event.target.value)} />
           <select className="field px-3 py-2 text-sm" value={mediaType} onChange={(event) => setMediaType(event.target.value as SceneMediaType)}>
             <option value="image">Immagine 16:9</option>
@@ -1465,9 +1565,28 @@ function SceneManager({
             </div>
           ) : null}
           <textarea className="field min-h-24 resize-none px-3 py-2 text-sm" placeholder="Descrizione" value={description} onChange={(event) => setDescription(event.target.value)} />
-          <button className="director-primary-action">
-            <Plus size={16} /> Crea scena
-          </button>
+          <div className="grid gap-2">
+            <button className="director-primary-action w-full">
+              {editingScene ? (
+                <>
+                  <Save size={16} /> Salva modifiche
+                </>
+              ) : (
+                <>
+                  <Plus size={16} /> Crea scena
+                </>
+              )}
+            </button>
+            {editingScene ? (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="director-secondary-action w-full"
+              >
+                Annulla
+              </button>
+            ) : null}
+          </div>
         </form>
       </div>
     </section>
@@ -2051,13 +2170,15 @@ function MediaLibraryPanel({
 
 function PlayersManager({
   state,
-  onUpdateCharacter
+  onUpdateCharacter,
+  onDeleteCharacter
 }: {
   state: RoomState;
   onUpdateCharacter: (
     characterId: string,
     values: { characterName: string; characterSurname: string; portraitUrl: string; portraitFile?: File; color: string; hp: number; mentalState: string; visibleStatus: string; publicBackground: string; conditions: string }
   ) => void | Promise<void>;
+  onDeleteCharacter: (characterId: string) => void | Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState(state.characters[0]?.id ?? "");
   const selected = state.characters.find((character) => character.id === selectedId) ?? state.characters[0];
@@ -2208,9 +2329,23 @@ function PlayersManager({
             <textarea className="field min-h-20 resize-none px-3 py-2 text-sm" placeholder="Biografia pubblica..." value={draft.publicBio} onChange={(event) => setDraft({ ...draft, publicBio: event.target.value })} />
           </label>
 
-          <button className="director-save-action">
-            Salva giocatore
-          </button>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button className="director-save-action flex-1">
+              Salva giocatore
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm(`Sei sicuro di voler rimuovere il giocatore "${selected.character_name} ${selected.character_surname}" dalla sessione della stanza? Questa azione è irreversibile e libererà il suo posto.`);
+                if (confirmed) {
+                  onDeleteCharacter(selected.id);
+                }
+              }}
+              className="director-danger-action font-semibold text-red-100"
+            >
+              Rimuovi dalla sessione
+            </button>
+          </div>
         </form>
       </div>
     </section>
