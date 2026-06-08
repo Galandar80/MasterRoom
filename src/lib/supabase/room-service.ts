@@ -1256,6 +1256,20 @@ export async function updateCurrentAudio(supabase: DatabaseClient, roomId: strin
   if (error) throw error;
 }
 
+export async function updateRoomAudioState(supabase: DatabaseClient, roomId: string, values: { audioStatus: string; audioVolume: number }) {
+  const { error } = await supabase
+    .from("rooms")
+    .update({ 
+      audio_status: values.audioStatus, 
+      audio_volume: values.audioVolume 
+    })
+    .eq("id", roomId);
+
+  if (error) throw error;
+}
+
+
+
 export async function triggerRoomSoundEffect(supabase: DatabaseClient, roomId: string, effectId: string | null) {
   const { error } = await supabase
     .from("rooms")

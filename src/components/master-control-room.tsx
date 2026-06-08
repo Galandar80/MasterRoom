@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowLeft, AudioLines, Bell, ChevronDown, ChevronUp, Eye, Film, ImageUp, Library, ListOrdered, MapPinned, MessageSquareText, Pencil, Plus, Radio, Save, ScrollText, Send, Shield, Sparkles, Square, Trash2, UsersRound, Volume2, X } from "lucide-react";
+import { Activity, ArrowLeft, AudioLines, Bell, ChevronDown, ChevronUp, Eye, Film, ImageUp, Library, ListOrdered, MapPinned, MessageSquareText, Pause, Pencil, Play, Plus, Radio, Save, ScrollText, Send, Shield, Sparkles, Square, Trash2, UsersRound, Volume2, X } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import type { AudioTrack, InventoryItem, MapCharacterPosition, MediaAsset, Message, NarrativeMap, Npc, RoomState, Scene, SceneMediaType, SceneVisibility, SoundEffect } from "@/lib/types";
@@ -74,6 +74,7 @@ type MasterControlRoomProps = {
   onDeleteInventoryItem: (item: InventoryItem) => void | Promise<void>;
   onUpdateChatPermissions: (values: { chatEnabled: boolean; mutedUserIds: string[] }) => void | Promise<void>;
   onSaveRoomTurnState: (values: { turnEnabled: boolean; turnOrder: string[]; currentTurnIndex: number }) => void | Promise<void>;
+  onSaveRoomAudioState: (values: { audioStatus: string; audioVolume: number }) => void | Promise<void>;
   onCreateDiceRequest: (values: { diceCount?: number; diceSides: number; reason: string; targetUserId?: string | null; visibility: "public" | "private" }) => void | Promise<void>;
   onDrawCard: (values: { deck: CardDeckType; targetUserId?: string | null; visibility: "public" | "private"; reason: string }) => void | Promise<void>;
   onUpdateSpotlight: (values: { npcId: string | null; visibility: "off" | "public" | "private"; userIds: string[] }) => void | Promise<void>;
@@ -133,6 +134,7 @@ export function MasterControlRoom({
   onDeleteInventoryItem,
   onUpdateChatPermissions,
   onSaveRoomTurnState,
+  onSaveRoomAudioState,
   onCreateDiceRequest,
   onDrawCard,
   onUpdateSpotlight,
@@ -231,9 +233,59 @@ export function MasterControlRoom({
               </span>
               <div className="min-w-0 flex-1">
                 <strong className="block truncate text-xs text-stone-100">{currentAudio.title}</strong>
-                <small className="text-[10px] text-emerald-300">{currentAudio.loop ? "Loop attivo" : "Loop spento"}</small>
+                <small className="text-[10px] text-emerald-300">
+                  {state.room.audio_status === "playing" ? "In riproduzione" : state.room.audio_status === "paused" ? "In pausa" : "Fermato"}
+                </small>
               </div>
             </div>
+
+            {/* Pulsanti Controllo Master e Volume */}
+            <div className="flex items-center justify-between gap-3 my-1 border-t border-b border-white/5 py-1.5">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  title="Play globale"
+                  onClick={() => onSaveRoomAudioState({ audioStatus: "playing", audioVolume: state.room.audio_volume ?? 55 })}
+                  className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 hover:bg-white/10 transition ${state.room.audio_status === "playing" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/35" : "bg-white/[0.02] text-stone-400"}`}
+                >
+                  <Play size={10} fill={state.room.audio_status === "playing" ? "currentColor" : "none"} />
+                </button>
+                <button
+                  type="button"
+                  title="Pausa globale"
+                  onClick={() => onSaveRoomAudioState({ audioStatus: "paused", audioVolume: state.room.audio_volume ?? 55 })}
+                  className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 hover:bg-white/10 transition ${state.room.audio_status === "paused" ? "bg-amber-500/20 text-amber-300 border-amber-500/35" : "bg-white/[0.02] text-stone-400"}`}
+                >
+                  <Pause size={10} />
+                </button>
+                <button
+                  type="button"
+                  title="Stop globale"
+                  onClick={() => onSaveRoomAudioState({ audioStatus: "stopped", audioVolume: state.room.audio_volume ?? 55 })}
+                  className={`flex h-6 w-6 items-center justify-center rounded border border-white/10 hover:bg-white/10 transition ${state.room.audio_status === "stopped" ? "bg-rose-500/20 text-rose-300 border-rose-500/35" : "bg-white/[0.02] text-stone-400"}`}
+                >
+                  <Square size={10} fill={state.room.audio_status === "stopped" ? "currentColor" : "none"} />
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 flex-1 max-w-[110px]">
+                <Volume2 size={11} className="text-stone-400" />
+                <input
+                  aria-label="Volume Master"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={state.room.audio_volume ?? 55}
+                  onChange={(e) => {
+                    onSaveRoomAudioState({
+                      audioStatus: state.room.audio_status ?? "playing",
+                      audioVolume: Number(e.target.value)
+                    });
+                  }}
+                  className="w-full h-1 accent-brass bg-stone-700 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+
             <div className="flex gap-1.5">
               {state.audioTracks.slice(0, 3).map((track) => (
                 <button
@@ -247,6 +299,7 @@ export function MasterControlRoom({
               ))}
             </div>
           </div>
+
 
           {/* Right panel: Timeline sessione */}
           <div className="border-t border-white/10 pt-3 md:border-t-0 md:border-l md:border-white/10 md:pt-0 md:pl-4 flex flex-col justify-between">

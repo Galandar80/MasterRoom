@@ -42,6 +42,8 @@ alter table public.rooms add column if not exists sound_effect_started_at timest
 alter table public.rooms add column if not exists turn_enabled boolean not null default false;
 alter table public.rooms add column if not exists turn_order uuid[] not null default '{}';
 alter table public.rooms add column if not exists current_turn_index integer not null default 0;
+alter table public.rooms add column if not exists audio_status text not null default 'playing';
+alter table public.rooms add column if not exists audio_volume integer not null default 55;
 
 create table if not exists public.player_characters (
   id uuid primary key default gen_random_uuid(),

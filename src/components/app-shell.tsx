@@ -62,6 +62,7 @@ import {
   updateRoomChatPermissions,
   updateRoomSpotlight,
   updateRoomTurnState,
+  updateRoomAudioState,
   updateMessageContent,
   updateMessagePinned,
   upsertMapCharacterPosition,
@@ -1457,7 +1458,38 @@ export function AppShell() {
     }
   }
 
+  async function saveRoomAudioState(values: { audioStatus: string; audioVolume: number }) {
+    if (!isCurrentMaster) return;
+
+    try {
+      setError("");
+      if (supabase && !demoMode) {
+        await updateRoomAudioState(supabase, roomState.room.id, values);
+        setRoomState((state) => ({
+          ...state,
+          room: {
+            ...state.room,
+            audio_status: values.audioStatus,
+            audio_volume: values.audioVolume
+          }
+        }));
+      } else {
+        setRoomState((state) => ({
+          ...state,
+          room: {
+            ...state.room,
+            audio_status: values.audioStatus,
+            audio_volume: values.audioVolume
+          }
+        }));
+      }
+    } catch (audioError) {
+      setError(readError(audioError));
+    }
+  }
+
   async function saveCharacterByMaster(
+
     characterId: string,
     values: { characterName: string; characterSurname: string; portraitUrl: string; portraitFile?: File; color: string; hp: number; mentalState: string; visibleStatus: string; publicBackground: string; conditions: string }
   ) {
@@ -2283,6 +2315,7 @@ export function AppShell() {
           onDeleteInventoryItem={removeInventoryItem}
           onUpdateChatPermissions={saveChatPermissions}
           onSaveRoomTurnState={saveRoomTurnState}
+          onSaveRoomAudioState={saveRoomAudioState}
           onCreateDiceRequest={requestDice}
           onDrawCard={drawNarrativeCard}
           onUpdateSpotlight={saveSpotlight}

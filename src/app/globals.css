@@ -4017,39 +4017,76 @@ select.field:focus {
    GENRE VISUAL THEMES (FEATURE 1: TEMI DI GENERE)
    ========================================================================== */
 
-/* Variables root defaults (Classic Fantasy) */
+/* Variables root defaults (Generalist VTT - Cruscotto Modulare) */
 :root {
-  --color-brass-rgb: 200, 163, 93;
+  --color-brass-rgb: 156, 163, 175; /* Slate/Silver neutro */
   --color-brass: rgb(var(--color-brass-rgb));
   
-  --color-blood-rgb: 127, 29, 29;
+  --color-blood-rgb: 239, 68, 68; /* Rosso pulito base */
   --color-blood: rgb(var(--color-blood-rgb));
   
-  --color-ink-900-rgb: 7, 8, 13;
+  --color-ink-900-rgb: 9, 10, 15; /* Scurissimo antracite */
   --color-ink-900: rgb(var(--color-ink-900-rgb));
   
-  --color-ink-850-rgb: 10, 11, 18;
+  --color-ink-850-rgb: 15, 17, 26;
   --color-ink-850: rgb(var(--color-ink-850-rgb));
   
-  --color-ink-800-rgb: 13, 16, 24;
+  --color-ink-800-rgb: 22, 25, 38;
   --color-ink-800: rgb(var(--color-ink-800-rgb));
   
-  --color-ink-700-rgb: 21, 25, 39;
+  --color-ink-700-rgb: 31, 35, 51;
   --color-ink-700: rgb(var(--color-ink-700-rgb));
   
-  --color-ink-600-rgb: 31, 38, 53;
+  --color-ink-600-rgb: 45, 52, 72;
   --color-ink-600: rgb(var(--color-ink-600-rgb));
 
-  --font-cinzel: 'Cinzel', Georgia, serif;
+  --font-cinzel: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   
-  --glow-shadow: 0 0 25px rgba(var(--color-brass-rgb), 0.16);
-  --border-glow: 1px solid rgba(var(--color-brass-rgb), 0.22);
+  --glow-shadow: 0 0 20px rgba(156, 163, 175, 0.12);
+  --border-glow: 1px solid rgba(156, 163, 175, 0.2);
 }
 
 /* Base class for dynamic theme background images */
 .app-theme-bg {
+  background: 
+    radial-gradient(circle at 50% 30%, rgba(31, 35, 51, 0.4) 0%, transparent 70%),
+    #05070a !important;
+  transition: background 0.8s ease-in-out, background-image 0.8s ease-in-out;
+}
+
+/* 0. Tema Fantasy Classico Medievale */
+.theme-fantasy {
+  --color-brass-rgb: 200, 163, 93; /* Warm brass gold */
+  --color-brass: rgb(var(--color-brass-rgb));
+  
+  --color-blood-rgb: 127, 29, 29; /* Deep red */
+  --color-blood: rgb(var(--color-blood-rgb));
+  
+  --color-ink-900-rgb: 15, 11, 7; /* Warm dark wood tint */
+  --color-ink-900: rgb(var(--color-ink-900-rgb));
+  
+  --color-ink-850-rgb: 23, 17, 11;
+  --color-ink-850: rgb(var(--color-ink-850-rgb));
+  
+  --color-ink-800-rgb: 31, 23, 15;
+  --color-ink-800: rgb(var(--color-ink-800-rgb));
+  
+  --color-ink-700-rgb: 43, 32, 21;
+  --color-ink-700: rgb(var(--color-ink-700-rgb));
+  
+  --color-ink-600-rgb: 61, 45, 30;
+  --color-ink-600: rgb(var(--color-ink-600-rgb));
+
+  --font-cinzel: 'Cinzel', Georgia, serif;
+  
+  --glow-shadow: 0 0 25px rgba(200, 163, 93, 0.18);
+  --border-glow: 1px solid rgba(200, 163, 93, 0.28);
+}
+
+.theme-fantasy .app-theme-bg {
   background-image: url('/assets/master/director-room-bg.png') !important;
-  transition: background-image 0.8s ease-in-out;
+  background-size: cover;
+  background-position: center;
 }
 
 /* 1. Tema Cyberpunk Neon */
@@ -4496,19 +4533,62 @@ select.field:focus {
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transition: all 0.2s ease;
   background: rgba(var(--color-brass-rgb), 0.1);
   border: 1px solid rgba(var(--color-brass-rgb), 0.3);
   color: var(--color-brass);
 }
-.dice-request-btn:hover {
-  background: rgba(var(--color-brass-rgb), 0.2);
-  border-color: rgba(var(--color-brass-rgb), 0.52);
-  color: white;
-  transform: translateY(-1px);
-}
-.dice-request-btn:active {
-  transform: translateY(0);
+
+/* ==========================================================================
+   TACTILE 3D BUTTONS OVERLAYS
+   ========================================================================== */
+.btn-tactile-3d,
+.director-toolbar-button,
+.director-icon-button,
+.premium-icon-button,
+.director-small-button,
+.dice-request-btn {
+  position: relative;
+  box-shadow: 0 4px 0 rgba(var(--color-brass-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateY(0) !important;
+  transition: transform 80ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 80ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 160ms ease, background 160ms ease, color 160ms ease !important;
 }
 
+.btn-tactile-3d:hover,
+.director-toolbar-button:hover,
+.director-icon-button:hover,
+.premium-icon-button:hover,
+.director-small-button:hover,
+.dice-request-btn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 5px 0 rgba(var(--color-brass-rgb), 0.45), 0 4px 12px rgba(var(--color-brass-rgb), 0.16) !important;
+  border-color: rgba(var(--color-brass-rgb), 0.72) !important;
+}
+
+.btn-tactile-3d:active,
+.director-toolbar-button:active,
+.director-icon-button:active,
+.premium-icon-button:active,
+.director-small-button:active,
+.dice-request-btn:active {
+  transform: translateY(3px) !important;
+  box-shadow: 0 1px 0 rgba(var(--color-brass-rgb), 0.2) !important;
+}
+
+/* Speaker Active Ring Pulse Animation */
+.director-identity-token.is-active span,
+.map-indicator-avatar.is-active {
+  border-color: rgba(var(--color-brass-rgb), 0.88) !important;
+  animation: active-token-pulse 2s infinite ease-in-out;
+}
+
+@keyframes active-token-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 14px rgba(var(--color-brass-rgb), 0.4), inset 0 0 14px rgba(var(--color-brass-rgb), 0.2);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 22px rgba(var(--color-brass-rgb), 0.7), inset 0 0 20px rgba(var(--color-brass-rgb), 0.4);
+  }
+}
 

@@ -11,9 +11,10 @@ type AudioPlayerProps = {
   externalMuted?: boolean;
   onVolumeChange?: (vol: number) => void;
   onMutedChange?: (muted: boolean) => void;
+  status?: string; // 'playing' | 'paused' | 'stopped'
 };
 
-export function AudioPlayer({ track, autoStart = true, externalVolume, externalMuted, onVolumeChange, onMutedChange }: AudioPlayerProps) {
+export function AudioPlayer({ track, autoStart = true, externalVolume, externalMuted, onVolumeChange, onMutedChange, status = "playing" }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const outgoingAudioRef = useRef<HTMLAudioElement>(null);
   const fadeTimerRef = useRef<number | null>(null);
@@ -49,6 +50,7 @@ export function AudioPlayer({ track, autoStart = true, externalVolume, externalM
     }
   }, [muted, volume]);
 
+  // Handle track changing / crossfading
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -66,7 +68,7 @@ export function AudioPlayer({ track, autoStart = true, externalVolume, externalM
     audio.volume = 0;
     audio.muted = muted;
 
-    if (autoStart && activeTrack.audio_url) {
+    if (autoStart && activeTrack.audio_url && status === "playing") {
       audio.play().then(() => {
         setPlaying(true);
         const startedAt = Date.now();
@@ -91,12 +93,34 @@ export function AudioPlayer({ track, autoStart = true, externalVolume, externalM
       }).catch(() => setPlaying(false));
     } else {
       audio.pause();
+      if (status === "stopped") {
+        audio.currentTime = 0;
+      }
       if (outgoingAudio) {
         outgoingAudio.pause();
         setOutgoingTrack(null);
       }
     }
-  }, [activeTrack, autoStart, muted, volume]);
+  }, [activeTrack]);
+
+  // Handle play/pause/stop status updates without reloading the track
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !activeTrack.audio_url) return;
+
+    if (status === "playing") {
+      if (audio.paused) {
+        audio.volume = muted ? 0 : volume / 100;
+        audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      }
+    } else {
+      audio.pause();
+      setPlaying(false);
+      if (status === "stopped") {
+        audio.currentTime = 0;
+      }
+    }
+  }, [status, muted, volume, activeTrack.audio_url]);
 
   useEffect(() => {
     const outgoingAudio = outgoingAudioRef.current;
@@ -111,6 +135,7 @@ export function AudioPlayer({ track, autoStart = true, externalVolume, externalM
       if (fadeTimerRef.current) window.clearInterval(fadeTimerRef.current);
     };
   }, []);
+
 
   async function togglePlayback() {
     const audio = audioRef.current;

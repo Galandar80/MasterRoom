@@ -47,6 +47,8 @@ export type Room = {
   turn_enabled?: boolean;
   turn_order?: string[];
   current_turn_index?: number;
+  audio_status?: string;
+  audio_volume?: number;
 };
 
 export type Scene = {

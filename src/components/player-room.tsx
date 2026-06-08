@@ -191,7 +191,11 @@ export function PlayerRoom({ state, currentAudio, onBack, onSend, onPrivateSend,
             }}
           />
         </div>
-        <AudioPlayer track={currentAudio} />
+        <AudioPlayer 
+          track={currentAudio} 
+          status={state.room.audio_status}
+          externalVolume={state.room.audio_volume}
+        />
       </div>
 
       {immersiveMode ? null : <CharacterRail side="right" characters={rightCharacters} inventory={state.inventory} presence={state.presence} />}
