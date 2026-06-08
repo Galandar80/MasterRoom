@@ -422,57 +422,59 @@ export function MasterControlRoom({
           ) : null}
 
           {activeTool === "chat" ? (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_25rem]">
-              <div className="grid gap-4">
-                <ChatPanel
-                  messages={state.messages}
-                  value={masterChatText}
-                  onChange={setMasterChatText}
-                  onSend={sendMasterChat}
-                  onTyping={() => onTyping("gdr")}
-                  onDeleteMessage={onDeleteMessage}
-                  onEditMessage={onEditMessage}
-                  onTogglePin={onToggleMessagePin}
-                  onLoadOlder={onLoadOlderMessages}
-                  hasOlderMessages={state.hasOlderMessages}
-                  currentUserId={state.profile.id}
-                  isMaster
-                  characters={state.characters}
-                  npcs={state.npcs}
-                  showAvatars
-                  typing={state.typing}
-                  diceRequests={state.diceRequests}
-                />
-                <ChatPermissionsPanel state={state} onUpdateChatPermissions={onUpdateChatPermissions} />
-                <DiceRequestPanel characters={state.characters} onCreate={onCreateDiceRequest} />
-                <ExportChatButton messages={[...state.messages, ...state.offMessages, ...state.privateMessages]} onLoadAll={onExportMessages} />
-                <OffChatPanel
-                  messages={state.offMessages}
-                  value={offText}
-                  onChange={(value) => {
-                    setOffText(value);
-                    if (value.trim()) onTyping("off");
-                  }}
-                  onSend={() => {
-                    if (!offText.trim()) return;
-                    onOffMessage(offText.trim());
-                    setOffText("");
-                  }}
-                  onDeleteMessage={onDeleteMessage}
-                />
-              </div>
-              <div className="grid gap-4">
-                <PrivateThreadsPanel
-                  profile={state.profile}
-                  characters={state.characters}
-                  messages={state.privateMessages}
-                  masterId={state.campaigns[0].master_id}
-                  isMaster
-                  onSend={onPrivateMessage}
-                  onDeleteMessage={onDeleteMessage}
-                />
-                <SpotlightManager room={state.room} npcs={state.npcs} characters={state.characters} onSave={onUpdateSpotlight} />
-                <NpcPanel state={state} onCreateNpc={onCreateNpc} onDeleteNpc={onDeleteNpc} />
+            <div className="grid gap-4">
+              <ChatPanel
+                messages={state.messages}
+                value={masterChatText}
+                onChange={setMasterChatText}
+                onSend={sendMasterChat}
+                onTyping={() => onTyping("gdr")}
+                onDeleteMessage={onDeleteMessage}
+                onEditMessage={onEditMessage}
+                onTogglePin={onToggleMessagePin}
+                onLoadOlder={onLoadOlderMessages}
+                hasOlderMessages={state.hasOlderMessages}
+                currentUserId={state.profile.id}
+                isMaster
+                characters={state.characters}
+                npcs={state.npcs}
+                showAvatars
+                typing={state.typing}
+                diceRequests={state.diceRequests}
+              />
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_25rem]">
+                <div className="grid gap-4">
+                  <ChatPermissionsPanel state={state} onUpdateChatPermissions={onUpdateChatPermissions} />
+                  <DiceRequestPanel characters={state.characters} onCreate={onCreateDiceRequest} />
+                  <ExportChatButton messages={[...state.messages, ...state.offMessages, ...state.privateMessages]} onLoadAll={onExportMessages} />
+                  <OffChatPanel
+                    messages={state.offMessages}
+                    value={offText}
+                    onChange={(value) => {
+                      setOffText(value);
+                      if (value.trim()) onTyping("off");
+                    }}
+                    onSend={() => {
+                      if (!offText.trim()) return;
+                      onOffMessage(offText.trim());
+                      setOffText("");
+                    }}
+                    onDeleteMessage={onDeleteMessage}
+                  />
+                </div>
+                <div className="grid gap-4">
+                  <PrivateThreadsPanel
+                    profile={state.profile}
+                    characters={state.characters}
+                    messages={state.privateMessages}
+                    masterId={state.campaigns[0].master_id}
+                    isMaster
+                    onSend={onPrivateMessage}
+                    onDeleteMessage={onDeleteMessage}
+                  />
+                  <SpotlightManager room={state.room} npcs={state.npcs} characters={state.characters} onSave={onUpdateSpotlight} />
+                  <NpcPanel state={state} onCreateNpc={onCreateNpc} onDeleteNpc={onDeleteNpc} />
+                </div>
               </div>
             </div>
           ) : null}
