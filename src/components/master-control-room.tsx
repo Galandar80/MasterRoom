@@ -306,42 +306,41 @@ export function MasterControlRoom({
 
         <div className="grid min-w-0 gap-4">
           {activeTool === "preview" ? (
-            <>
-              <div className="director-overview grid gap-4">
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <SpotlightPanel room={state.room} npcs={state.npcs} currentUserId={state.profile.id} />
-                  <SoundEffectPlayer room={state.room} soundEffects={state.soundEffects} />
-                </div>
-                <SceneStage
-                  scene={state.scene}
-                  compact
-                  audioVolume={audioVolume}
-                  audioMuted={audioMuted}
-                  audioTitle={currentAudio.title}
-                  onAudioVolumeChange={setAudioVolume}
-                  onAudioMutedChange={setAudioMuted}
-                />
-              </div>
-
-              <div className="director-overview-lower grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
-                <ReadOnlyChat
-                  state={state}
-                  messages={state.messages}
-                  privateCount={state.privateMessages.length}
-                  value={masterChatText}
-                  onChange={(value) => {
-                    setMasterChatText(value);
-                    if (value.trim()) onTyping("gdr");
-                  }}
-                  onSend={sendMasterChat}
-                  onDeleteMessage={onDeleteMessage}
-                />
+            <div className="director-overview grid gap-4">
+              <ReadOnlyChat
+                state={state}
+                messages={state.messages}
+                privateCount={state.privateMessages.length}
+                value={masterChatText}
+                onChange={(value) => {
+                  setMasterChatText(value);
+                  if (value.trim()) onTyping("gdr");
+                }}
+                onSend={sendMasterChat}
+                onDeleteMessage={onDeleteMessage}
+              />
+              
+              <div className="grid gap-4 xl:grid-cols-2">
                 <div className="grid gap-4">
+                  <SpotlightPanel room={state.room} npcs={state.npcs} currentUserId={state.profile.id} />
                   <CharactersPanel state={state} />
+                </div>
+                <div className="grid gap-4">
+                  <SoundEffectPlayer room={state.room} soundEffects={state.soundEffects} />
                   <AudioPanel currentAudio={currentAudio} audioTracks={state.audioTracks} onAudioChange={onAudioChange} />
                 </div>
               </div>
-            </>
+
+              <SceneStage
+                scene={state.scene}
+                compact
+                audioVolume={audioVolume}
+                audioMuted={audioMuted}
+                audioTitle={currentAudio.title}
+                onAudioVolumeChange={setAudioVolume}
+                onAudioMutedChange={setAudioMuted}
+              />
+            </div>
           ) : null}
 
           {activeTool === "scenes" ? (
