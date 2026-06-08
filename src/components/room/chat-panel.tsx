@@ -28,6 +28,8 @@ type ChatPanelProps = {
   showAvatars?: boolean;
   diceRequests?: DiceRequest[];
   onRollDice?: (request: DiceRequest) => void;
+  identityId?: string;
+  onIdentityChange?: (id: string) => void;
 };
 
 export function ChatPanel({
@@ -50,7 +52,9 @@ export function ChatPanel({
   npcs = [],
   showAvatars = false,
   diceRequests = [],
-  onRollDice
+  onRollDice,
+  identityId,
+  onIdentityChange
 }: ChatPanelProps) {
   const [filter, setFilter] = useState<ChatFilter>("all");
   const [search, setSearch] = useState("");
@@ -437,6 +441,40 @@ export function ChatPanel({
           </div>
         ) : null}
 
+        {isMaster && npcs && npcs.length > 0 && onIdentityChange && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-white/5 pb-2">
+            <span className="text-[10px] uppercase font-bold text-stone-500 mr-1">Scrivi come:</span>
+            <button
+              type="button"
+              onClick={() => onIdentityChange("master")}
+              className={cn(
+                "rounded px-2 py-0.5 text-[10px] font-semibold transition border",
+                identityId === "master"
+                  ? "bg-brass/20 text-brass border-brass/45"
+                  : "bg-white/[0.02] text-stone-400 border-white/5 hover:bg-white/[0.06]"
+              )}
+            >
+              Master
+            </button>
+            {npcs.map((npc) => (
+              <button
+                key={npc.id}
+                type="button"
+                onClick={() => onIdentityChange(npc.id)}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[10px] font-semibold transition border",
+                  identityId === npc.id
+                    ? "border-brass/45 bg-brass/20 text-brass"
+                    : "bg-white/[0.02] text-stone-400 border-white/5 hover:bg-white/[0.06]"
+                )}
+                style={identityId === npc.id ? {} : { color: npc.color }}
+              >
+                {npc.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="mb-2 flex flex-wrap gap-2">
           {narrativeModes.map((mode) => (
             <button
@@ -513,7 +551,7 @@ function applyNarrativePrefix(value: string, prefix: string) {
 function parseNarrativeContent(content: string) {
   const match = content.match(/^\[(azione|pensiero|evento|capitolo|sussurro)\]\s*(.*)$/i);
   if (!match) {
-    return { kind: "", label: "", content, wrap: true };
+    return { kind: "", label: "", content, wrap: false };
   }
 
   const kind = match[1].toLowerCase();

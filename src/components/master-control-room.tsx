@@ -371,6 +371,8 @@ export function MasterControlRoom({
                 }}
                 onSend={sendMasterChat}
                 onDeleteMessage={onDeleteMessage}
+                identityId={identityId}
+                onIdentityChange={onIdentityChange}
               />
               
               <div className="grid gap-4 xl:grid-cols-2">
@@ -441,6 +443,8 @@ export function MasterControlRoom({
                 showAvatars
                 typing={state.typing}
                 diceRequests={state.diceRequests}
+                identityId={identityId}
+                onIdentityChange={onIdentityChange}
               />
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_25rem]">
                 <div className="grid gap-4">
@@ -2871,7 +2875,9 @@ function ReadOnlyChat({
   value,
   onChange,
   onSend,
-  onDeleteMessage
+  onDeleteMessage,
+  identityId,
+  onIdentityChange
 }: {
   state: RoomState;
   messages: RoomState["messages"];
@@ -2880,6 +2886,8 @@ function ReadOnlyChat({
   onChange: (value: string) => void;
   onSend: () => void;
   onDeleteMessage?: (message: Message) => void;
+  identityId: string;
+  onIdentityChange: (id: string) => void;
 }) {
   return (
     <section className="director-live-chat glass-panel min-h-[27rem] rounded-lg p-4">
@@ -2913,7 +2921,7 @@ function ReadOnlyChat({
                     </button>
                   ) : null}
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-white">&quot;{message.content}&quot;</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-white">{message.content}</p>
               </div>
             </article>
           );
@@ -2924,26 +2932,59 @@ function ReadOnlyChat({
       </div>
       <p className="mt-3 text-xs text-slate-400">{privateCount} messaggi privati nella cronologia Master.</p>
       <form
-        className="director-live-composer mt-4 flex gap-2"
+        className="director-live-composer mt-4 flex flex-col gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           onSend();
         }}
       >
-        <textarea
-          className="field min-h-12 flex-1 resize-none px-3 py-3 text-sm"
-          placeholder="Scrivi messaggio pubblico..."
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
-            event.preventDefault();
-            onSend();
-          }}
-        />
-        <button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-ember-500 text-ink-900 transition hover:bg-ember-400" aria-label="Invia messaggio" title="Invia messaggio">
-          <MessageSquareText size={18} />
-        </button>
+        {state.npcs && state.npcs.length > 0 && onIdentityChange && (
+          <div className="flex flex-wrap items-center gap-1.5 pb-1 border-b border-white/5">
+            <span className="text-[10px] uppercase font-bold text-stone-500 mr-1">Scrivi come:</span>
+            <button
+              type="button"
+              onClick={() => onIdentityChange("master")}
+              className={`rounded px-2 py-0.5 text-[10px] font-semibold transition border ${
+                identityId === "master"
+                  ? "bg-brass/20 text-brass border-brass/45"
+                  : "bg-white/[0.02] text-stone-400 border-white/5 hover:bg-white/[0.06]"
+              }`}
+            >
+              Master
+            </button>
+            {state.npcs.map((npc) => (
+              <button
+                key={npc.id}
+                type="button"
+                onClick={() => onIdentityChange(npc.id)}
+                className={`rounded px-2 py-0.5 text-[10px] font-semibold transition border ${
+                  identityId === npc.id
+                    ? "border-brass/45 bg-brass/20 text-brass"
+                    : "bg-white/[0.02] text-stone-400 border-white/5 hover:bg-white/[0.06]"
+                }`}
+                style={identityId === npc.id ? {} : { color: npc.color }}
+              >
+                {npc.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 w-full">
+          <textarea
+            className="field min-h-12 flex-1 resize-none px-3 py-3 text-sm"
+            placeholder="Scrivi messaggio pubblico..."
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey) return;
+              event.preventDefault();
+              onSend();
+            }}
+          />
+          <button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-ember-500 text-ink-900 transition hover:bg-ember-400" aria-label="Invia messaggio" title="Invia messaggio">
+            <MessageSquareText size={18} />
+          </button>
+        </div>
       </form>
     </section>
   );
