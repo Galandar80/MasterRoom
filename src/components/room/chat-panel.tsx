@@ -380,7 +380,7 @@ export function ChatPanel({
                 <button
                   type="button"
                   onClick={() => handleAvatarClick(message)}
-                  className="chat-message-avatar ui-portrait-circular cursor-pointer transition-transform hover:scale-105 active:scale-95 outline-none focus:scale-105"
+                  className="chat-message-avatar cursor-pointer transition-transform hover:scale-105 active:scale-95 outline-none focus:scale-105"
                   style={avatar.url ? { backgroundImage: `url(${avatar.url})`, color: message.sender_color } : { color: message.sender_color }}
                   aria-label={`Visualizza profilo di ${message.sender_display_name}`}
                 >

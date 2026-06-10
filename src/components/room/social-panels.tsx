@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, MessageCircle, MessageSquareLock, Send, Trash2 } from "lucide-react";
+import { Download, FileText, MessageCircle, MessageSquareLock, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Character, Message, Profile } from "@/lib/types";
 import { shortTime } from "@/lib/utils";
@@ -180,14 +180,22 @@ function SocialEmptyState({ title, text }: { title: string; text: string }) {
 export function ExportChatButton({ messages, onLoadAll }: { messages: Message[]; onLoadAll?: () => Promise<Message[]> }) {
   const [isExporting, setIsExporting] = useState(false);
 
-  async function exportChat() {
+  async function getExportMessages() {
+    return (onLoadAll ? await onLoadAll() : messages)
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  function formatMessageLine(message: Message) {
+    const channel = message.is_private ? "Sussurro" : message.channel === "off" ? "OFF GDR" : "Chat";
+    return `[${new Date(message.created_at).toLocaleString("it-IT")}] [${channel}] ${message.sender_display_name}: ${cleanExportContent(message.content)}`;
+  }
+
+  async function exportTxt() {
     setIsExporting(true);
     try {
-      const exportMessages = onLoadAll ? await onLoadAll() : messages;
-      const lines = exportMessages
-      .slice()
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((message) => `[${new Date(message.created_at).toLocaleString()}] ${message.sender_display_name}: ${message.content}`);
+      const exportMessages = await getExportMessages();
+      const lines = exportMessages.map(formatMessageLine);
       const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -200,9 +208,82 @@ export function ExportChatButton({ messages, onLoadAll }: { messages: Message[];
     }
   }
 
+  async function exportPdf() {
+    setIsExporting(true);
+    try {
+      const exportMessages = await getExportMessages();
+      const rows = exportMessages.map((message) => {
+        const channel = message.is_private ? "Sussurro" : message.channel === "off" ? "OFF GDR" : "Chat";
+        return `
+          <article class="message">
+            <div class="meta">
+              <span>${escapeHtml(new Date(message.created_at).toLocaleString("it-IT"))}</span>
+              <strong>${escapeHtml(message.sender_display_name)}</strong>
+              <em>${escapeHtml(channel)}</em>
+            </div>
+            <p>${escapeHtml(cleanExportContent(message.content))}</p>
+          </article>
+        `;
+      }).join("");
+      const printWindow = window.open("", "_blank", "width=900,height=1200");
+      if (!printWindow) return;
+      printWindow.document.write(`<!doctype html>
+        <html lang="it">
+          <head>
+            <meta charset="utf-8" />
+            <title>Chat sessione GDR</title>
+            <style>
+              @page { margin: 18mm; }
+              body { color: #1f2933; font-family: Georgia, "Times New Roman", serif; line-height: 1.5; }
+              h1 { margin: 0 0 4px; font-size: 24px; }
+              .subtitle { margin: 0 0 18px; color: #64748b; font-family: Arial, sans-serif; font-size: 12px; }
+              .message { break-inside: avoid; border-top: 1px solid #d7c7a0; padding: 10px 0; }
+              .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-family: Arial, sans-serif; font-size: 11px; color: #64748b; }
+              .meta strong { color: #7c2d12; font-size: 13px; }
+              .meta em { border: 1px solid #d7c7a0; border-radius: 999px; padding: 1px 7px; color: #854d0e; font-style: normal; }
+              p { margin: 6px 0 0; white-space: pre-wrap; font-size: 13px; }
+            </style>
+          </head>
+          <body>
+            <h1>Chat sessione GDR</h1>
+            <p class="subtitle">Esportata il ${escapeHtml(new Date().toLocaleString("it-IT"))} · ${exportMessages.length} messaggi</p>
+            ${rows || "<p>Nessun messaggio da esportare.</p>"}
+            <script>
+              window.addEventListener("load", () => {
+                window.print();
+              });
+            </script>
+          </body>
+        </html>`);
+      printWindow.document.close();
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
-    <button type="button" onClick={exportChat} disabled={isExporting} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white hover:bg-white/[0.08] disabled:opacity-60">
-      <Download size={16} /> {isExporting ? "Esporto..." : "Esporta chat"}
-    </button>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" onClick={exportTxt} disabled={isExporting} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white hover:bg-white/[0.08] disabled:opacity-60">
+        <Download size={16} /> {isExporting ? "Esporto..." : "TXT"}
+      </button>
+      <button type="button" onClick={exportPdf} disabled={isExporting} className="inline-flex items-center gap-2 rounded-lg border border-brass/25 bg-brass/10 px-3 py-2 text-sm text-brass hover:bg-brass/15 disabled:opacity-60">
+        <FileText size={16} /> PDF
+      </button>
+    </div>
   );
+}
+
+function cleanExportContent(content: string) {
+  const replyMatch = content.trimStart().match(/^(["“]?)(?:\[reply-to:[^:]+:[^\]]+\]\s*)([\s\S]*)$/i);
+  const visible = replyMatch ? replyMatch[2].replace(/["”]\s*$/u, "") : content;
+  return visible.trim();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
