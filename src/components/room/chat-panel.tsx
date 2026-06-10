@@ -62,6 +62,8 @@ export function ChatPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [isCompact, setIsCompact] = useState(false);
+  const [failedAvatarUrls, setFailedAvatarUrls] = useState<Set<string>>(new Set());
   const [activeProfile, setActiveProfile] = useState<{
     name: string;
     avatarUrl: string;
@@ -191,6 +193,18 @@ export function ChatPanel({
   const activeTyping = typing.filter((item) => item.user_id !== currentUserId && item.channel === "gdr" && Date.now() - new Date(item.updated_at).getTime() < 6000);
   const prevMessagesLength = useRef(messages.length);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsCompact(localStorage.getItem("gdr_chat_density") === "compact");
+  }, []);
+
+  const setChatDensity = (compact: boolean) => {
+    setIsCompact(compact);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gdr_chat_density", compact ? "compact" : "wide");
+    }
+  };
+
   // Sound effects trigger for incoming messages
   useEffect(() => {
     if (messages.length > prevMessagesLength.current) {
@@ -234,7 +248,7 @@ export function ChatPanel({
   }, [messages]);
 
   return (
-    <section className="story-chat-panel glass-panel flex min-h-[34rem] flex-col rounded-lg">
+    <section className={cn("story-chat-panel glass-panel flex min-h-[34rem] flex-col rounded-lg", isCompact ? "story-chat-panel--compact" : "")}>
       <header className="story-chat-header flex items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle size={18} className="text-brass" />
@@ -243,9 +257,19 @@ export function ChatPanel({
             <p className="text-xs text-stone-500">Registro narrativo della sessione</p>
           </div>
         </div>
-        <span className="story-status-badge rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">
-          {disabled ? "chat bloccata" : "realtime ready"}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="story-density-toggle inline-flex rounded-md border border-white/10 bg-black/20 p-0.5">
+            <button type="button" className={cn("rounded px-2 py-1 text-xs text-stone-300", !isCompact ? "bg-brass/20 text-brass" : "")} onClick={() => setChatDensity(false)}>
+              Ampia
+            </button>
+            <button type="button" className={cn("rounded px-2 py-1 text-xs text-stone-300", isCompact ? "bg-brass/20 text-brass" : "")} onClick={() => setChatDensity(true)}>
+              Compatta
+            </button>
+          </div>
+          <span className="story-status-badge rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">
+            {disabled ? "chat bloccata" : "realtime ready"}
+          </span>
+        </div>
       </header>
 
       <div className="grid gap-2 border-b border-white/10 px-4 py-3">
@@ -354,6 +378,7 @@ export function ChatPanel({
 
           const message = item;
           const avatar = resolveChatAvatar(message, characters, npcs);
+          const avatarUrl = avatar.url && !failedAvatarUrls.has(avatar.url) ? avatar.url : "";
           const meta = messageMeta(message);
           const replyInfo = parseMessageReplies(message.content);
           const narrative = parseNarrativeContent(replyInfo.content);
@@ -381,10 +406,19 @@ export function ChatPanel({
                   type="button"
                   onClick={() => handleAvatarClick(message)}
                   className="chat-message-avatar cursor-pointer transition-transform hover:scale-105 active:scale-95 outline-none focus:scale-105"
-                  style={avatar.url ? { backgroundImage: `url(${avatar.url})`, color: message.sender_color } : { color: message.sender_color }}
+                  style={{ color: message.sender_color }}
                   aria-label={`Visualizza profilo di ${message.sender_display_name}`}
                 >
-                  {avatar.url ? "" : avatar.fallback}
+                  <span className="chat-message-avatar-fallback">{avatar.fallback}</span>
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      loading="lazy"
+                      onError={() => setFailedAvatarUrls((current) => new Set(current).add(avatarUrl))}
+                    />
+                  ) : null}
                 </button>
               ) : null}
               <div className="min-w-0">
@@ -829,13 +863,13 @@ function narrativeLabel(kind: string) {
 }
 
 function resolveChatAvatar(message: Message, characters: Character[], npcs: Npc[]) {
-  if (message.sender_type === "npc" && message.npc_id) {
-    const npc = npcs.find((item) => item.id === message.npc_id);
+  if (message.sender_type === "npc") {
+    const npc = npcs.find((item) => item.id === message.npc_id) ?? findNpcByDisplayName(npcs, message.sender_display_name);
     return { url: npc?.portrait_url ?? "", fallback: npc?.name.slice(0, 1).toUpperCase() ?? "N" };
   }
 
-  if (message.sender_type === "player" && message.sender_user_id) {
-    const character = characters.find((item) => item.user_id === message.sender_user_id);
+  if (message.sender_type === "player") {
+    const character = characters.find((item) => item.user_id === message.sender_user_id) ?? findCharacterByDisplayName(characters, message.sender_display_name);
     return {
       url: character?.portrait_url ?? "",
       fallback: (character?.character_name ?? message.sender_display_name).slice(0, 1).toUpperCase()
@@ -843,6 +877,21 @@ function resolveChatAvatar(message: Message, characters: Character[], npcs: Npc[
   }
 
   return { url: "", fallback: "M" };
+}
+
+function findCharacterByDisplayName(characters: Character[], displayName: string) {
+  const normalized = normalizeDisplayName(displayName);
+  return characters.find((character) => normalizeDisplayName(`${character.character_name} ${character.character_surname}`) === normalized)
+    ?? characters.find((character) => normalizeDisplayName(character.character_name) === normalized);
+}
+
+function findNpcByDisplayName(npcs: Npc[], displayName: string) {
+  const normalized = normalizeDisplayName(displayName);
+  return npcs.find((npc) => normalizeDisplayName(npc.name) === normalized);
+}
+
+function normalizeDisplayName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function isTechnicalMessage(message: Message) {
